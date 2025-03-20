@@ -1,12 +1,7 @@
 import React from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  Switch, 
-  TouchableOpacity
-} from 'react-native';
+import { View, Text, StyleSheet, Switch, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { COLORS } from '@/src/constants/Styles';
 
 interface PrivacyToggleProps {
   title: string;
@@ -17,19 +12,16 @@ interface PrivacyToggleProps {
   disabled?: boolean;
 }
 
-/**
- * PrivacyToggle component for toggling privacy settings
- */
 const PrivacyToggle: React.FC<PrivacyToggleProps> = ({
   title,
   description,
   value,
   onValueChange,
   iconName = 'shield-checkmark',
-  disabled = false
+  disabled = false,
 }) => {
   return (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.container}
       onPress={() => !disabled && onValueChange(!value)}
       disabled={disabled}
@@ -37,26 +29,25 @@ const PrivacyToggle: React.FC<PrivacyToggleProps> = ({
     >
       <View style={styles.contentContainer}>
         {iconName && (
-          <View style={[styles.iconContainer, value ? styles.activeIconContainer : styles.inactiveIconContainer]}>
-            <Ionicons 
-              name={iconName} 
-              size={18} 
-              color={value ? '#FFFFFF' : '#666666'} 
-            />
+          <View
+            style={[
+              styles.iconContainer,
+              value ? styles.activeIconContainer : styles.inactiveIconContainer,
+            ]}
+          >
+            <Ionicons name={iconName} size={18} color={value ? COLORS.white : COLORS.gray} />
           </View>
         )}
         <View style={styles.textContainer}>
           <Text style={styles.title}>{title}</Text>
-          {description && (
-            <Text style={styles.description}>{description}</Text>
-          )}
+          {description && <Text style={styles.description}>{description}</Text>}
         </View>
       </View>
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: '#E0E0E0', true: '#A4B8FF' }}
-        thumbColor={value ? '#1A2151' : '#FFFFFF'}
+        trackColor={{ false: COLORS.mediumGray, true: '#A4B8FF' }}
+        thumbColor={value ? COLORS.primary : COLORS.white}
         disabled={disabled}
       />
     </TouchableOpacity>
@@ -69,7 +60,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
-    backgroundColor: 'white',
+    backgroundColor: COLORS.white,
     borderRadius: 10,
     marginBottom: 10,
     shadowColor: '#000',
@@ -93,10 +84,10 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   activeIconContainer: {
-    backgroundColor: '#1A2151',
+    backgroundColor: COLORS.primary,
   },
   inactiveIconContainer: {
-    backgroundColor: '#F0F0F0',
+    backgroundColor: COLORS.lightGray,
   },
   textContainer: {
     flex: 1,
@@ -104,12 +95,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1A2151',
+    color: COLORS.primary,
     marginBottom: 4,
   },
   description: {
     fontSize: 14,
-    color: '#666666',
+    color: COLORS.gray,
   },
 });
 

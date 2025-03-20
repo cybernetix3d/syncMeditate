@@ -2,9 +2,7 @@ import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, Tabs } from 'expo-router';
 import { Pressable } from 'react-native';
-
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
+import { useTheme } from '@/src/contexts/ThemeContext';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 
 function TabBarIcon(props: {
@@ -15,22 +13,26 @@ function TabBarIcon(props: {
 }
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const { colors } = useTheme();
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#1A2151',
-        tabBarInactiveTintColor: '#888888',
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.gray,
         headerShown: useClientOnlyValue(false, true),
+        headerStyle: {
+          backgroundColor: colors.background,
+        },
+        headerTintColor: colors.headerText,
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopColor: '#E0E0E0',
+          backgroundColor: colors.surface,
+          borderTopColor: colors.mediumGray,
           elevation: 0,
           shadowOpacity: 0.1,
           paddingTop: 5,
-          height: 60
-        }
+          height: 60,
+        },
       }}>
       <Tabs.Screen
         name="index"
@@ -39,7 +41,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <TabBarIcon name="leaf" color={color} />,
           headerTitleStyle: {
             fontWeight: '600',
-            color: '#1A2151'
+            color: colors.headerText,
           },
           headerRight: () => (
             <Link href="/meditation/sync?id=quick&duration=10" asChild>
@@ -48,7 +50,7 @@ export default function TabLayout() {
                   <Ionicons
                     name="play-circle"
                     size={28}
-                    color="#1A2151"
+                    color={colors.primary}
                     style={{ marginRight: 15, opacity: pressed ? 0.7 : 1 }}
                   />
                 )}
@@ -64,8 +66,8 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <TabBarIcon name="calendar" color={color} />,
           headerTitleStyle: {
             fontWeight: '600',
-            color: '#1A2151'
-          }
+            color: colors.headerText,
+          },
         }}
       />
       <Tabs.Screen
@@ -75,8 +77,8 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <TabBarIcon name="people" color={color} />,
           headerTitleStyle: {
             fontWeight: '600',
-            color: '#1A2151'
-          }
+            color: colors.headerText,
+          },
         }}
       />
       <Tabs.Screen
@@ -86,8 +88,8 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <TabBarIcon name="settings" color={color} />,
           headerTitleStyle: {
             fontWeight: '600',
-            color: '#1A2151'
-          }
+            color: colors.headerText,
+          },
         }}
       />
     </Tabs>

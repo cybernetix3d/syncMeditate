@@ -7,7 +7,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-  StyleSheet
+  StyleSheet,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,8 +16,8 @@ import { supabase } from '@/src/api/supabase';
 import Button from '@/src/components/common/Button';
 import { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
+import { useTheme } from '@/src/contexts/ThemeContext';
 
-// Define interfaces
 interface CommunityStats {
   total_users: number;
   active_now: number;
@@ -44,40 +44,30 @@ export default function CommunityScreen() {
     total_users: 0,
     active_now: 0,
     total_sessions: 0,
-    global_minutes: 0
+    global_minutes: 0,
   });
   const [traditions, setTraditions] = useState<CommunityTradition[]>([]);
   const [globalActivity, setGlobalActivity] = useState<GlobalActivity[]>([]);
+  const { colors } = useTheme();
 
-  // Fetch community data (in a real app, this would call actual Supabase functions)
   const fetchCommunityData = async () => {
     try {
       setLoading(true);
-
-      // For now, we'll use mock data since the RPC functions may not exist yet
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock stats data
       setStats({
         total_users: 1248,
         active_now: 37,
         total_sessions: 8542,
-        global_minutes: 428760 // About 7,146 hours
+        global_minutes: 428760,
       });
-
-      // Mock tradition distribution
       setTraditions([
         { tradition: 'secular', count: 523 },
         { tradition: 'buddhist', count: 312 },
         { tradition: 'christian', count: 205 },
         { tradition: 'hindu', count: 98 },
-        { tradition: 'islamic', count: 58 }
+        { tradition: 'islamic', count: 58 },
       ]);
-
-      // Generate mock activity data
       setGlobalActivity(generateMockActivityData());
-
     } catch (error) {
       console.error('Error in fetchCommunityData:', error);
     } finally {
@@ -86,48 +76,40 @@ export default function CommunityScreen() {
     }
   };
 
-  // Generate mock activity data
   const generateMockActivityData = (): GlobalActivity[] => {
     const hours = [];
     const now = new Date();
-    
     for (let i = 23; i >= 0; i--) {
       const hour = new Date(now);
       hour.setHours(now.getHours() - i);
-      
       hours.push({
         time: hour.toLocaleTimeString([], { hour: '2-digit' }),
-        count: Math.floor(Math.random() * 50) + 10
+        count: Math.floor(Math.random() * 50) + 10,
       });
     }
-    
     return hours;
   };
 
-  // Load data on mount
   useEffect(() => {
     fetchCommunityData();
   }, []);
 
-  // Handle refresh
   const onRefresh = () => {
     setRefreshing(true);
     fetchCommunityData();
   };
 
-  // Handle join global session
   const handleJoinGlobal = () => {
     router.push('/meditation/sync?id=global&duration=20');
   };
 
-  // Render tradition card
   const renderTraditionCard = (tradition: CommunityTradition) => {
-    const traditionObj = FAITH_TRADITIONS.find(t => t.id === tradition.tradition) || FAITH_TRADITIONS[0];
-    
+    const traditionObj =
+      FAITH_TRADITIONS.find(t => t.id === tradition.tradition) || FAITH_TRADITIONS[0];
     return (
       <View key={tradition.tradition} style={styles.traditionCard}>
         <View style={[COMMON_STYLES.iconContainer, { backgroundColor: traditionObj.color }]}>
-          <Ionicons name={traditionObj.icon as any} size={24} color="white" />
+          <Ionicons name={traditionObj.icon as any} size={24} color={COLORS.white} />
         </View>
         <View style={styles.traditionContent}>
           <Text style={styles.traditionName}>{traditionObj.name}</Text>
@@ -137,79 +119,75 @@ export default function CommunityScreen() {
     );
   };
 
-  // Render loading state
   if (loading && !refreshing) {
     return (
-      <View style={COMMON_STYLES.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={COMMON_STYLES.loadingText}>Loading community data...</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: colors.gray }]}>Loading community data...</Text>
       </View>
     );
   }
 
   return (
     <ScrollView
-      style={COMMON_STYLES.container}
-      contentContainerStyle={COMMON_STYLES.contentContainer}
+      style={[styles.container, { backgroundColor: colors.background }]}
+      contentContainerStyle={styles.contentContainer}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          colors={[COLORS.primary]}
-          tintColor={COLORS.primary}
+          colors={[colors.primary]}
+          tintColor={colors.primary}
         />
       }
     >
-      {/* Community Header */}
       <View style={styles.header}>
-        <Text style={COMMON_STYLES.title}>Global Meditation Community</Text>
-        <Text style={COMMON_STYLES.subtitle}>
+        <Text style={[styles.title, { color: colors.headerText }]}>Global Meditation Community</Text>
+        <Text style={[styles.subtitle, { color: colors.subtitleText }]}>
           Connect with meditators around the world
         </Text>
       </View>
 
-      {/* Community Stats */}
       <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{stats.active_now.toLocaleString()}</Text>
-          <Text style={styles.statLabel}>Meditating Now</Text>
+        <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.statValue, { color: colors.primary }]}>{stats.active_now.toLocaleString()}</Text>
+          <Text style={[styles.statLabel, { color: colors.gray }]}>Meditating Now</Text>
         </View>
-        
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{stats.total_users.toLocaleString()}</Text>
-          <Text style={styles.statLabel}>Community Size</Text>
+        <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.statValue, { color: colors.primary }]}>{stats.total_users.toLocaleString()}</Text>
+          <Text style={[styles.statLabel, { color: colors.gray }]}>Community Size</Text>
         </View>
-        
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{stats.total_sessions.toLocaleString()}</Text>
-          <Text style={styles.statLabel}>Sessions</Text>
+        <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.statValue, { color: colors.primary }]}>{stats.total_sessions.toLocaleString()}</Text>
+          <Text style={[styles.statLabel, { color: colors.gray }]}>Sessions</Text>
         </View>
-        
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>
+        <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.statValue, { color: colors.primary }]}>
             {Math.floor(stats.global_minutes / 60).toLocaleString()}h
           </Text>
-          <Text style={styles.statLabel}>Total Hours</Text>
+          <Text style={[styles.statLabel, { color: colors.gray }]}>Total Hours</Text>
         </View>
       </View>
 
-      {/* Global Activity */}
       <View style={COMMON_STYLES.section}>
         <Text style={COMMON_STYLES.sectionTitle}>Global Activity</Text>
         <View style={styles.activityContainer}>
           <View style={styles.activityChart}>
             {globalActivity.map((activity, index) => (
               <View key={index} style={styles.activityBarContainer}>
-                <View 
+                <View
                   style={[
-                    styles.activityBar, 
-                    { 
+                    styles.activityBar,
+                    {
                       height: Math.max((activity.count / 50) * 100, 10),
-                      backgroundColor: index % 3 === 0 ? COLORS.primary : 
-                                      index % 3 === 1 ? COLORS.secondary : 
-                                      COLORS.accent
-                    }
-                  ]} 
+                      backgroundColor:
+                        index % 3 === 0
+                          ? COLORS.primary
+                          : index % 3 === 1
+                          ? COLORS.secondary
+                          : COLORS.accent,
+                    },
+                  ]}
                 />
                 <Text style={styles.activityTime}>{activity.time}</Text>
               </View>
@@ -223,12 +201,8 @@ export default function CommunityScreen() {
         </View>
       </View>
 
-      {/* Join Global Session Button */}
       <View style={styles.joinGlobalContainer}>
-        <Button
-          onPress={handleJoinGlobal}
-          variant="primary"
-        >
+        <Button onPress={handleJoinGlobal} variant="primary">
           Join Global Meditation Now
         </Button>
         <Text style={styles.joinGlobalSubtext}>
@@ -236,7 +210,6 @@ export default function CommunityScreen() {
         </Text>
       </View>
 
-      {/* Faith Traditions */}
       <View style={COMMON_STYLES.section}>
         <Text style={COMMON_STYLES.sectionTitle}>Faith Traditions</Text>
         <View style={styles.traditionsContainer}>
@@ -244,7 +217,6 @@ export default function CommunityScreen() {
         </View>
       </View>
 
-      {/* Community Resources */}
       <View style={COMMON_STYLES.section}>
         <Text style={COMMON_STYLES.sectionTitle}>Resources</Text>
         <View style={COMMON_STYLES.card}>
@@ -253,17 +225,13 @@ export default function CommunityScreen() {
             <Text style={styles.resourceText}>Meditation Guides</Text>
             <Ionicons name="chevron-forward" size={18} color={COLORS.gray} />
           </TouchableOpacity>
-          
           <View style={styles.resourceDivider} />
-          
           <TouchableOpacity style={styles.resourceItem}>
             <Ionicons name="people-outline" size={24} color={COLORS.primary} />
             <Text style={styles.resourceText}>Discussion Forums</Text>
             <Text style={styles.comingSoonBadge}>Coming Soon</Text>
           </TouchableOpacity>
-          
           <View style={styles.resourceDivider} />
-          
           <TouchableOpacity style={styles.resourceItem}>
             <Ionicons name="calendar-outline" size={24} color={COLORS.primary} />
             <Text style={styles.resourceText}>Upcoming Events</Text>
@@ -275,11 +243,21 @@ export default function CommunityScreen() {
   );
 }
 
-// Component-specific styles that aren't shared
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   header: {
     padding: 20,
     paddingTop: 15,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  subtitle: {
+    fontSize: 16,
+    marginTop: 5,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -292,7 +270,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 15,
     margin: 5,
-    width: '47%', // Just under half to account for margin
+    width: '47%',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -406,9 +384,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: COLORS.accent,
-    backgroundColor: 'rgba(255, 107, 107, 0.1)',
+    backgroundColor: 'rgba(212,163,115,0.1)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 10,
-  }
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    marginTop: 10,
+  },
+  contentContainer: {
+    padding: 20,
+  },
 });

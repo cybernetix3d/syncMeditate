@@ -3,7 +3,6 @@ import {
   StyleSheet, 
   View, 
   Text, 
-  FlatList, 
   TouchableOpacity, 
   ActivityIndicator,
   RefreshControl,
@@ -16,6 +15,8 @@ import { useAuth } from '@/src/context/AuthProvider';
 import { supabase } from '@/src/api/supabase';
 import { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
 import Button from '@/src/components/common/Button';
+import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
+import { useTheme } from '@/src/contexts/ThemeContext';
 
 // Event type definition
 interface MeditationEvent {
@@ -43,13 +44,11 @@ interface EventCardProps {
   onJoin: (event: MeditationEvent) => void;
 }
 
-// Event card component
 const EventCard: React.FC<EventCardProps> = ({ event, onJoin }) => {
   const router = useRouter();
   const eventDate = new Date(event.start_time);
   const traditionObj = FAITH_TRADITIONS.find(t => t.id === event.tradition) || FAITH_TRADITIONS[0];
   
-  // Format date for display
   const formatDate = (date: Date): string => {
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
@@ -64,33 +63,26 @@ const EventCard: React.FC<EventCardProps> = ({ event, onJoin }) => {
     }
   };
   
-  // Format time for display
   const formatTime = (date: Date): string => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
   
-  // Check if event is happening now
   const isHappeningNow = (): boolean => {
     const now = new Date();
     const startTime = new Date(event.start_time);
     const endTime = new Date(startTime.getTime() + event.duration * 60000);
-    
     return now >= startTime && now <= endTime;
   };
   
-  // Calculate time until event
   const getTimeUntil = (): string | null => {
     const now = new Date();
     const startTime = new Date(event.start_time);
     const diffMs = startTime.getTime() - now.getTime();
-    
     if (diffMs < 0) return null;
-    
     const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMins = Math.round((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    
     if (diffHrs > 24) {
-      return null; // Just show the date
+      return null;
     } else if (diffHrs > 0) {
       return `In ${diffHrs}h ${diffMins}m`;
     } else {
@@ -98,26 +90,19 @@ const EventCard: React.FC<EventCardProps> = ({ event, onJoin }) => {
     }
   };
   
-  // Handle event card tap
   const handlePress = () => {
     router.push(`/meditation/${event.id}`);
   };
   
   return (
-    <TouchableOpacity
-      style={styles.eventCard}
-      onPress={handlePress}
-      activeOpacity={0.7}
-    >
+    <TouchableOpacity style={styles.eventCard} onPress={handlePress} activeOpacity={0.7}>
       <View style={styles.cardHeader}>
         <View style={[styles.traditionIcon, { backgroundColor: traditionObj.color }]}>
-          <Ionicons name={traditionObj.icon as any} size={20} color="white" />
+          <Ionicons name={traditionObj.icon as any} size={20} color={COLORS.white} />
         </View>
-        
         <View style={styles.dateTimeContainer}>
           <Text style={styles.dateText}>{formatDate(eventDate)}</Text>
           <Text style={styles.timeText}>{formatTime(eventDate)}</Text>
-          
           {isHappeningNow() ? (
             <View style={styles.liveIndicator}>
               <View style={styles.liveDot} />
@@ -128,47 +113,34 @@ const EventCard: React.FC<EventCardProps> = ({ event, onJoin }) => {
           ) : null}
         </View>
       </View>
-      
       <View style={styles.cardBody}>
         <Text style={styles.eventTitle}>{event.title}</Text>
-        
         {event.description ? (
-          <Text 
-            style={styles.eventDescription}
-            numberOfLines={2}
-          >
+          <Text style={styles.eventDescription} numberOfLines={2}>
             {event.description}
           </Text>
         ) : null}
-        
         <View style={styles.eventDetails}>
           <View style={styles.detailItem}>
-            <Ionicons name="time-outline" size={16} color="#666666" />
+            <Ionicons name="time-outline" size={16} color={COLORS.gray} />
             <Text style={styles.detailText}>{event.duration} min</Text>
           </View>
-          
           <View style={styles.detailItem}>
-            <Ionicons name="people-outline" size={16} color="#666666" />
+            <Ionicons name="people-outline" size={16} color={COLORS.gray} />
             <Text style={styles.detailText}>
               {event.participant_count || 0} {event.participant_count === 1 ? 'person' : 'people'}
             </Text>
           </View>
-          
           {event.is_global && (
             <View style={styles.detailItem}>
-              <Ionicons name="globe-outline" size={16} color="#666666" />
+              <Ionicons name="globe-outline" size={16} color={COLORS.gray} />
               <Text style={styles.detailText}>Global</Text>
             </View>
           )}
         </View>
       </View>
-      
       <View style={styles.cardFooter}>
-        <Button
-          variant="secondary"
-          size="small"
-          onPress={() => onJoin(event)}
-        >
+        <Button variant="secondary" size="small" onPress={() => onJoin(event)}>
           {isHappeningNow() ? 'Join Now' : 'Details'}
         </Button>
       </View>
@@ -176,7 +148,6 @@ const EventCard: React.FC<EventCardProps> = ({ event, onJoin }) => {
   );
 };
 
-// Date header component for sections
 interface DateHeaderProps {
   date: string;
 }
@@ -212,28 +183,21 @@ export default function EventsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [eventSections, setEventSections] = useState<EventSection[]>([]);
+  const { colors } = useTheme();
   
-  // Fetch meditation events
   const fetchEvents = async () => {
     try {
       setLoading(true);
-      
-      // Get current time
       const now = new Date();
-      
-      // Get events happening now or in the future
       const { data, error } = await supabase
         .from('meditation_events')
         .select('*')
-        .gte('start_time', new Date(now.getTime() - 60 * 60 * 1000).toISOString()) // Include events that started up to 1 hour ago
+        .gte('start_time', new Date(now.getTime() - 60 * 60 * 1000).toISOString())
         .order('start_time', { ascending: true });
-        
       if (error) {
         console.error('Error fetching events:', error);
         return;
       }
-      
-      // For each event, get participant count
       const eventsWithCounts = await Promise.all(
         (data || []).map(async (event) => {
           const { count, error: countError } = await supabase
@@ -241,19 +205,14 @@ export default function EventsScreen() {
             .select('*', { count: 'exact', head: true })
             .eq('event_id', event.id)
             .eq('active', true);
-            
           if (countError) {
             console.error('Error counting participants:', countError);
             return { ...event, participant_count: 0 };
           }
-          
           return { ...event, participant_count: count || 0 };
         })
       );
-      
       setEvents(eventsWithCounts);
-      
-      // Group events by date
       groupEventsByDate(eventsWithCounts);
     } catch (error) {
       console.error('Error in fetchEvents:', error);
@@ -263,10 +222,8 @@ export default function EventsScreen() {
     }
   };
   
-  // Group events by date for section list
   const groupEventsByDate = (events: MeditationEvent[]) => {
     const grouped: Record<string, MeditationEvent[]> = {};
-    
     events.forEach(event => {
       const date = new Date(event.start_time).toDateString();
       if (!grouped[date]) {
@@ -274,15 +231,12 @@ export default function EventsScreen() {
       }
       grouped[date].push(event);
     });
-    
-    // Convert to array of sections
     const sections = Object.keys(grouped)
       .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
       .map(date => ({
         title: date,
         data: grouped[date]
       }));
-    
     setEventSections(sections);
   };
   
@@ -290,18 +244,15 @@ export default function EventsScreen() {
     fetchEvents();
   }, []);
   
-  // Refresh events list
   const onRefresh = () => {
     setRefreshing(true);
     fetchEvents();
   };
   
-  // Join an event
   const handleJoinEvent = (event: MeditationEvent) => {
     router.push(`/meditation/sync?id=${event.id}&duration=${event.duration}`);
   };
   
-  // Create new event
   const handleCreateEvent = () => {
     if (!user) {
       Alert.alert(
@@ -309,59 +260,47 @@ export default function EventsScreen() {
         'You need to sign in to create a meditation event.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Sign In', 
-            onPress: () => router.push('/auth/sign-in')
-          }
+          { text: 'Sign In', onPress: () => router.push('/auth/sign-in') }
         ]
       );
       return;
     }
-    
-    // Navigate to event creation screen
-    // This will be implemented in future
     Alert.alert('Coming Soon', 'Event creation will be available in a future update.');
   };
   
-  // Render empty state
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <Ionicons name="calendar-outline" size={60} color="#CCCCCC" />
+      <Ionicons name="calendar-outline" size={60} color={COLORS.lightGray} />
       <Text style={styles.emptyTitle}>No Upcoming Events</Text>
       <Text style={styles.emptySubtitle}>
         There are no scheduled meditation events at this time.
       </Text>
-      <Button 
-        variant="primary"
-        onPress={handleCreateEvent}
-        style={styles.createButton}
-      >
+      <Button variant="primary" onPress={handleCreateEvent} style={styles.createButton}>
         Create an Event
       </Button>
     </View>
   );
   
-  // Render loading state
   if (loading && !refreshing) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#1A2151" />
-        <Text style={styles.loadingText}>Loading events...</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: colors.gray }]}>Loading events...</Text>
       </View>
     );
   }
   
   return (
-    <View style={styles.container}>
-      <View style={styles.headerContainer}>
-        <Text style={styles.headerTitle}>Upcoming Sessions</Text>
-        <TouchableOpacity
-          style={styles.createEventButton}
-          onPress={handleCreateEvent}
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.headerContainer, { backgroundColor: colors.background }]}>
+        <Text style={[styles.headerTitle, { color: colors.primary }]}>Upcoming Sessions</Text>
+        <TouchableOpacity 
+          style={[styles.createEventButton, { backgroundColor: colors.secondary }]} 
+          onPress={handleCreateEvent} 
           activeOpacity={0.7}
         >
-          <Ionicons name="add" size={20} color="white" />
-          <Text style={styles.createEventText}>Create</Text>
+          <Ionicons name="add" size={20} color={colors.white} />
+          <Text style={[styles.createEventText, { color: colors.white }]}>Create</Text>
         </TouchableOpacity>
       </View>
       
@@ -381,8 +320,8 @@ export default function EventsScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={['#1A2151']}
-              tintColor="#1A2151"
+              colors={[colors.primary]}
+              tintColor={colors.primary}
             />
           }
         />
@@ -398,7 +337,6 @@ export default function EventsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F8F8',
   },
   headerContainer: {
     flexDirection: 'row',
@@ -406,23 +344,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 15,
-    backgroundColor: '#F8F8F8',
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#1A2151',
   },
   createEventButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#4A6FFF',
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 20,
   },
   createEventText: {
-    color: 'white',
     fontWeight: '600',
     marginLeft: 5,
   },
@@ -430,12 +364,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8F8F8',
   },
   loadingText: {
     fontSize: 16,
-    color: '#666666',
-    marginTop: 10,
   },
   eventsList: {
     paddingBottom: 20,
@@ -445,25 +376,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 10,
-    backgroundColor: '#F8F8F8',
   },
   dateHeaderText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1A2151',
-    marginRight: 10,
   },
   dateHeaderLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#E0E0E0',
   },
   eventCard: {
-    backgroundColor: 'white',
+    backgroundColor: COLORS.white,
     borderRadius: 12,
     marginHorizontal: 20,
     marginBottom: 15,
-    shadowColor: '#000',
+    shadowColor: COLORS.darkGray,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -474,7 +401,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: COLORS.lightGray,
   },
   traditionIcon: {
     width: 40,
@@ -490,17 +417,16 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1A2151',
   },
   timeText: {
     fontSize: 14,
-    color: '#666666',
+    color: COLORS.gray,
     marginBottom: 5,
   },
   liveIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FF6B6B',
+    backgroundColor: COLORS.accent,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
@@ -510,17 +436,17 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: 'white',
+    backgroundColor: COLORS.white,
     marginRight: 4,
   },
   liveText: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: 'white',
+    color: COLORS.white,
   },
   countdownText: {
     fontSize: 12,
-    color: '#4A6FFF',
+    color: COLORS.secondary,
     fontWeight: '600',
   },
   cardBody: {
@@ -529,12 +455,10 @@ const styles = StyleSheet.create({
   eventTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1A2151',
-    marginBottom: 5,
   },
   eventDescription: {
     fontSize: 14,
-    color: '#666666',
+    color: COLORS.gray,
     marginBottom: 10,
   },
   eventDetails: {
@@ -549,7 +473,7 @@ const styles = StyleSheet.create({
   },
   detailText: {
     fontSize: 13,
-    color: '#666666',
+    color: COLORS.gray,
     marginLeft: 4,
   },
   cardFooter: {
@@ -570,17 +494,36 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1A2151',
-    marginTop: 15,
-    marginBottom: 5,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#666666',
+    color: COLORS.gray,
     textAlign: 'center',
     marginBottom: 20,
   },
-  createButton: {
-    marginTop: 10,
-  }
+  signInButton: {
+    marginTop: 15,
+  },
+  quotesContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  quoteCard: {
+    backgroundColor: 'rgba(233,237,201,0.05)',
+    borderRadius: 12,
+    padding: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.secondary,
+  },
+  quoteText: {
+    fontSize: 16,
+    fontStyle: 'italic',
+    color: COLORS.primary,
+    marginBottom: 8,
+  },
+  quoteAuthor: {
+    fontSize: 14,
+    color: COLORS.gray,
+    textAlign: 'right',
+  },
 });

@@ -1,20 +1,49 @@
 import { StyleSheet } from 'react-native';
 
 // App colors
-export const COLORS = {
-  primary: '#1A2151',
-  secondary: '#4A6FFF',
-  accent: '#FF6B6B',
-  background: '#F8F8F8',
+export const LIGHT_COLORS = {
+  primary: '#4A90E2',      // Bright blue
+  secondary: '#B6D0F6',    // Light blue
+  accent: '#1B4F8F',       // Dark blue
+  pastel1: '#FFB5E8',     // Pastel pink
+  pastel2: '#B8F2E6',     // Pastel mint
+  pastel3: '#AED9E0',     // Pastel blue
+  background: '#F5F8FC',   // Very light blue-white
+  surface: '#FFFFFF',      // White
   white: '#FFFFFF',
   lightGray: '#F0F0F0',
   mediumGray: '#E0E0E0',
   gray: '#666666',
   darkGray: '#444444',
-  headerText: '#1A2151',
+  headerText: '#1B4F8F',   // Dark blue for text
   bodyText: '#444444',
   subtitleText: '#666666'
 };
+
+export const DARK_COLORS = {
+  primary: '#6B9FE6',      // Softer bright blue
+  secondary: '#2C4B7A',    // Darker blue
+  accent: '#98C1FF',       // Light accent blue
+  pastel1: '#BD8BA5',     // Dark pastel pink
+  pastel2: '#86B3AA',     // Dark pastel mint
+  pastel3: '#7B98A6',     // Dark pastel blue
+  background: '#121212',   // Dark background
+  surface: '#1E1E1E',     // Slightly lighter dark
+  white: '#FFFFFF',
+  lightGray: '#2A2A2A',
+  mediumGray: '#3D3D3D',
+  gray: '#888888',
+  darkGray: '#CCCCCC',
+  headerText: '#98C1FF',   // Light blue for text
+  bodyText: '#E0E0E0',
+  subtitleText: '#AAAAAA'
+};
+
+// Export a function to get colors based on theme
+export const getThemeColors = (isDark: boolean) => isDark ? DARK_COLORS : LIGHT_COLORS;
+
+// Default to light theme initially
+export const COLORS = LIGHT_COLORS;
 
 // Common styles used across the app
 export const COMMON_STYLES = StyleSheet.create({
@@ -51,14 +80,14 @@ export const COMMON_STYLES = StyleSheet.create({
   
   // Card styles
   card: {
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.surface,
     borderRadius: 12,
     marginBottom: 15,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
     overflow: 'hidden',
   },
   cardHeader: {

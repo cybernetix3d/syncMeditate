@@ -12,7 +12,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#1A2151"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -24,7 +26,10 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#1A2151"
       },
-      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
     },
     "plugins": [
       [
@@ -32,7 +37,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow SyncMeditate to use your location to show you on the global meditation map."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "extra": {
       "supabaseUrl": "https://bkzqonmtmxwmkvmzzlyq.supabase.co",

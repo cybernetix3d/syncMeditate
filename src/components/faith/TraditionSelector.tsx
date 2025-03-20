@@ -1,33 +1,24 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  ScrollView, 
-  Image, 
-  ImageSourcePropType 
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, ImageSourcePropType } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { COLORS } from '@/src/constants/Styles';
 
-// Faith tradition type
 export interface FaithTradition {
   id: string;
   name: string;
   description: string;
-  icon: string; // Ionicons name
+  icon: string;
   color: string;
   image?: ImageSourcePropType;
 }
 
-// Default faith traditions
 export const FAITH_TRADITIONS: FaithTradition[] = [
   {
     id: 'secular',
     name: 'Secular',
     description: 'Non-religious mindfulness meditation',
     icon: 'leaf',
-    color: '#4A6FFF',
+    color: COLORS.secondary,
   },
   {
     id: 'buddhist',
@@ -87,9 +78,6 @@ interface TraditionSelectorProps {
   compact?: boolean;
 }
 
-/**
- * Component for selecting faith traditions with privacy-focused approach
- */
 const TraditionSelector: React.FC<TraditionSelectorProps> = ({
   selectedTradition,
   onSelectTradition,
@@ -98,20 +86,16 @@ const TraditionSelector: React.FC<TraditionSelectorProps> = ({
 }) => {
   const [expanded, setExpanded] = useState(!compact);
   
-  // Find the selected tradition object
   const selectedTraditionObj = FAITH_TRADITIONS.find(
     (t) => t.id === selectedTradition
   ) || FAITH_TRADITIONS[0];
   
-  // Toggle expanded state
   const toggleExpanded = () => {
     setExpanded(!expanded);
   };
   
-  // Render a tradition card
   const renderTraditionCard = (tradition: FaithTradition) => {
     const isSelected = tradition.id === selectedTradition;
-    
     return (
       <TouchableOpacity
         key={tradition.id}
@@ -127,7 +111,7 @@ const TraditionSelector: React.FC<TraditionSelectorProps> = ({
         activeOpacity={0.7}
       >
         <View style={[styles.iconContainer, { backgroundColor: tradition.color }]}>
-          <Ionicons name={tradition.icon as any} size={24} color="white" />
+          <Ionicons name={tradition.icon as any} size={24} color={COLORS.white} />
         </View>
         <View style={styles.traditionTextContainer}>
           <Text style={styles.traditionName}>{tradition.name}</Text>
@@ -146,7 +130,6 @@ const TraditionSelector: React.FC<TraditionSelectorProps> = ({
     );
   };
   
-  // Render compact selector
   const renderCompactSelector = () => (
     <View style={styles.compactContainer}>
       <TouchableOpacity
@@ -154,17 +137,8 @@ const TraditionSelector: React.FC<TraditionSelectorProps> = ({
         onPress={toggleExpanded}
         activeOpacity={0.7}
       >
-        <View
-          style={[
-            styles.iconContainer,
-            { backgroundColor: selectedTraditionObj.color },
-          ]}
-        >
-          <Ionicons
-            name={selectedTraditionObj.icon as any}
-            size={24}
-            color="white"
-          />
+        <View style={[styles.iconContainer, { backgroundColor: selectedTraditionObj.color }]}>
+          <Ionicons name={selectedTraditionObj.icon as any} size={24} color={COLORS.white} />
         </View>
         <View style={styles.selectedTextContainer}>
           <Text style={styles.selectedName}>{selectedTraditionObj.name}</Text>
@@ -173,7 +147,7 @@ const TraditionSelector: React.FC<TraditionSelectorProps> = ({
         <Ionicons
           name={expanded ? 'chevron-up' : 'chevron-down'}
           size={20}
-          color="#666"
+          color={COLORS.gray}
         />
       </TouchableOpacity>
       
@@ -189,7 +163,6 @@ const TraditionSelector: React.FC<TraditionSelectorProps> = ({
     </View>
   );
   
-  // Render expanded grid
   const renderExpandedGrid = () => (
     <ScrollView
       style={styles.traditionsScrollContainer}
@@ -211,7 +184,7 @@ const styles = StyleSheet.create({
   selectedTraditionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
+    backgroundColor: COLORS.white,
     borderRadius: 10,
     padding: 12,
     marginBottom: 10,
@@ -228,11 +201,11 @@ const styles = StyleSheet.create({
   selectedName: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#1A2151',
+    color: COLORS.primary,
   },
   tapToChangeText: {
     fontSize: 12,
-    color: '#666',
+    color: COLORS.gray,
   },
   traditionsScrollContainer: {
     maxHeight: 300,
@@ -243,7 +216,7 @@ const styles = StyleSheet.create({
   traditionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
+    backgroundColor: COLORS.white,
     borderRadius: 10,
     padding: 12,
     marginBottom: 10,
@@ -274,12 +247,12 @@ const styles = StyleSheet.create({
   traditionName: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#1A2151',
+    color: COLORS.primary,
     marginBottom: 2,
   },
   traditionDescription: {
     fontSize: 12,
-    color: '#666',
+    color: COLORS.gray,
   },
   checkmarkContainer: {
     width: 24,

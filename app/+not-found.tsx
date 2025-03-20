@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import Button from '../src/components/common/Button';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 
 export default function NotFoundScreen() {
   const handleGoHome = () => {
@@ -12,21 +13,17 @@ export default function NotFoundScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.iconContainer}>
-        <Ionicons name="leaf" size={60} color="#4A6FFF" />
+        <Ionicons name="leaf" size={60} color={COLORS.secondary} />
         <View style={styles.questionMark}>
           <Text style={styles.questionMarkText}>?</Text>
         </View>
       </View>
-      
       <Text style={styles.title}>Page Not Found</Text>
       <Text style={styles.subtitle}>
         The meditation path you're seeking seems to have vanished into thin air
       </Text>
-      
       <View style={styles.buttonContainer}>
-        <Button onPress={handleGoHome}>
-          Return to Home
-        </Button>
+        <Button onPress={handleGoHome}>Return to Home</Button>
       </View>
     </View>
   );
@@ -38,7 +35,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: COLORS.background,
   },
   iconContainer: {
     position: 'relative',
@@ -48,7 +45,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -10,
     right: -15,
-    backgroundColor: '#FF6B6B',
+    backgroundColor: COLORS.accent,
     width: 30,
     height: 30,
     borderRadius: 15,
@@ -56,7 +53,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   questionMarkText: {
-    color: 'white',
+    color: COLORS.white,
     fontSize: 20,
     fontWeight: 'bold',
   },
@@ -64,13 +61,13 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 10,
-    color: '#1A2151',
+    color: COLORS.primary,
   },
   subtitle: {
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 40,
-    color: '#666666',
+    color: COLORS.gray,
     maxWidth: '80%',
   },
   buttonContainer: {
