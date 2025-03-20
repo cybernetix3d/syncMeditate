@@ -494,6 +494,8 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: 'bold',
+    color: COLORS.accent,
+
   },
   emptySubtitle: {
     fontSize: 14,

@@ -1,42 +1,42 @@
 import { StyleSheet } from 'react-native';
 
-// App colors
+// App colors with improved complementary options
 export const LIGHT_COLORS = {
-  primary: '#4A90E2',      // Bright blue
-  secondary: '#B6D0F6',    // Light blue
-  accent: '#1B4F8F',       // Dark blue
-  pastel1: '#FFB5E8',     // Pastel pink
-  pastel2: '#B8F2E6',     // Pastel mint
-  pastel3: '#AED9E0',     // Pastel blue
-  background: '#F5F8FC',   // Very light blue-white
+  primary: '#3D8CAB',      // Teal blue - main brand color
+  secondary: '#D9A391',    // Light terracotta - complementary to teal
+  accent: '#D93C64',       // Raspberry - vibrant accent
+  pastel1: '#F2C94C',      // Golden yellow - warm accent
+  pastel2: '#A7D1DF',      // Light teal - complementary to primary
+  pastel3: '#34AB6F',      // Emerald green - fresh accent
+  background: '#F9FBFD',   // Very light blue-white
   surface: '#FFFFFF',      // White
   white: '#FFFFFF',
-  lightGray: '#F0F0F0',
-  mediumGray: '#E0E0E0',
-  gray: '#666666',
-  darkGray: '#444444',
-  headerText: '#1B4F8F',   // Dark blue for text
-  bodyText: '#444444',
-  subtitleText: '#666666'
+  lightGray: '#F0F5F7',
+  mediumGray: '#E1E8ED',
+  gray: '#8D989F',
+  darkGray: '#4F5E66',
+  headerText: '#286F8A',   // Dark teal for headers
+  bodyText: '#394B54',     // Dark blue-gray for body text
+  subtitleText: '#637680'  // Medium blue-gray for subtitles
 };
 
 export const DARK_COLORS = {
-  primary: '#6B9FE6',      // Softer bright blue
-  secondary: '#2C4B7A',    // Darker blue
-  accent: '#98C1FF',       // Light accent blue
-  pastel1: '#BD8BA5',     // Dark pastel pink
-  pastel2: '#86B3AA',     // Dark pastel mint
-  pastel3: '#7B98A6',     // Dark pastel blue
-  background: '#121212',   // Dark background
-  surface: '#1E1E1E',     // Slightly lighter dark
+  primary: '#4A9DBE',      // Brighter teal blue for dark mode
+  secondary: '#BE785A',    // Brighter terracotta - complementary
+  accent: '#ED4B78',       // Brighter raspberry for dark mode
+  pastel1: '#FFD966',      // Bright gold - warm accent
+  pastel2: '#79C0D8',      // Light teal - complementary to primary
+  pastel3: '#3DC17E',      // Brighter emerald for dark mode
+  background: '#121A1F',   // Very dark blue-black
+  surface: '#1A252C',      // Dark blue-gray
   white: '#FFFFFF',
-  lightGray: '#2A2A2A',
-  mediumGray: '#3D3D3D',
-  gray: '#888888',
-  darkGray: '#CCCCCC',
-  headerText: '#98C1FF',   // Light blue for text
-  bodyText: '#E0E0E0',
-  subtitleText: '#AAAAAA'
+  lightGray: '#2A343C',
+  mediumGray: '#354551',
+  gray: '#6D7C86',
+  darkGray: '#C5D0D6',
+  headerText: '#79C0D8',   // Light teal for headers
+  bodyText: '#DCE5EB',     // Light gray for body text
+  subtitleText: '#A0ABB3'  // Medium gray for subtitles
 };
 
 // Export a function to get colors based on theme

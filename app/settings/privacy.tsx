@@ -56,13 +56,6 @@ export default function PrivacySettingsScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style="dark" />
-      <View style={[styles.header, { borderBottomColor: colors.mediumGray }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color={colors.primary} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.headerText }]}>Privacy Settings</Text>
-        <View style={styles.headerRight} />
-      </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.primary }]}>Location Sharing</Text>
@@ -83,7 +76,7 @@ export default function PrivacySettingsScreen() {
               onPress={() => handleLocationOptionChange('none')}
             >
               <Ionicons 
-                name="location-off-outline" 
+                name="location-outline" 
                 size={24} 
                 color={privacySettings.locationSharingLevel === 'none' ? colors.primary : colors.gray} 
               />
@@ -200,27 +193,6 @@ export default function PrivacySettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  headerRight: {
-    width: 40,
   },
   scrollContent: {
     paddingBottom: 100,

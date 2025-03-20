@@ -2,12 +2,14 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import { supabase, checkSupabaseConnection } from '../api/supabase';
 import { Session, User, AuthResponse } from '@supabase/supabase-js';
 import { router } from 'expo-router';
+import { Alert } from 'react-native';
 
 // Define user type with additional profile data
-interface UserProfile {
+export interface UserProfile {
   id: string;
   email?: string | null;
   display_name?: string | null;
+  created_at?: string;
   privacy_settings?: {
     locationSharingLevel: 'none' | 'country' | 'city' | 'precise';
     useAnonymousId: boolean;
@@ -152,36 +154,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setError(null);
         
         // Check Supabase connection first
+        console.log('Checking Supabase connection...');
         const isConnected = await checkSupabaseConnection();
         if (!isConnected) {
-          throw new Error('Failed to connect to Supabase');
+          console.error('Failed to connect to Supabase');
+          if (mounted) {
+            setError(new Error('Failed to connect to authentication service'));
+            setUser(false);
+            setLoading(false);
+          }
+          return;
         }
         
+        console.log('Getting current session...');
         // Get the current session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
           console.error('Error getting session:', sessionError);
-          setError(sessionError);
           if (mounted) {
+            setError(sessionError);
             setUser(false);
             setSession(null);
+            setLoading(false);
           }
           return;
         }
 
         if (mounted) {
           setSession(session);
+          if (!session?.user) {
+            console.log('No session found, setting user to false');
+            setUser(false);
+            setLoading(false);
+            return;
+          }
         }
         
         if (session?.user) {
-          console.log('Session found, fetching user profile');
-          await fetchUserProfile(session.user.id);
-        } else {
-          console.log('No session found');
-          if (mounted) {
-            setUser(false);
-            setLoading(false);
+          console.log('Session found, fetching user profile for:', session.user.id);
+          try {
+            const { data: profile, error: profileError } = await supabase
+              .from('users')
+              .select('id, email, display_name, privacy_settings, faith_preferences')
+              .eq('id', session.user.id)
+              .single();
+
+            if (profileError) {
+              console.error('Error fetching profile:', profileError);
+              if (mounted) {
+                setUser(true); // User exists but no profile
+                setLoading(false);
+              }
+              return;
+            }
+
+            if (profile && mounted) {
+              console.log('Profile found:', profile);
+              setUser({
+                id: profile.id,
+                email: profile.email,
+                display_name: profile.display_name,
+                privacy_settings: profile.privacy_settings,
+                faith_preferences: profile.faith_preferences
+              });
+            } else {
+              console.log('No profile found, setting user to true');
+              setUser(true); // User exists but no profile
+            }
+          } catch (error) {
+            console.error('Error in profile fetch:', error);
+            if (mounted) {
+              setUser(true); // User exists but error fetching profile
+            }
+          } finally {
+            if (mounted) {
+              setLoading(false);
+            }
           }
         }
 
@@ -190,13 +239,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log(`Auth state changed: ${event}`);
           if (mounted) {
             setSession(session);
-          }
-          
-          if (session?.user) {
-            await fetchUserProfile(session.user.id);
-          } else {
-            if (mounted) {
+            
+            if (!session?.user) {
               setUser(false);
+              setLoading(false);
+              return;
+            }
+
+            try {
+              const { data: profile, error: profileError } = await supabase
+                .from('users')
+                .select('id, email, display_name, privacy_settings, faith_preferences')
+                .eq('id', session.user.id)
+                .single();
+
+              if (profileError) {
+                console.log('No profile found after auth change');
+                setUser(true); // User exists but no profile
+              } else if (profile) {
+                console.log('Profile found after auth change:', profile);
+                setUser({
+                  id: profile.id,
+                  email: profile.email,
+                  display_name: profile.display_name,
+                  privacy_settings: profile.privacy_settings,
+                  faith_preferences: profile.faith_preferences
+                });
+              }
+            } catch (error) {
+              console.error('Error fetching profile after auth change:', error);
+              setUser(true); // User exists but error fetching profile
+            } finally {
               setLoading(false);
             }
           }
@@ -395,12 +468,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Sign out
   const signOut = async () => {
     try {
+      console.log('Signing out...');
+      
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('Error signing out:', error);
+        throw error;
       }
+
+      // Clear all auth state
+      setUser(false);
+      setSession(null);
+      setError(null);
+      
+      // Navigate to sign in screen
+      console.log('Redirecting to sign in...');
+      router.replace('/auth/sign-in');
+      
     } catch (error) {
       console.error('Error signing out:', error);
+      Alert.alert('Error', 'Failed to sign out. Please try again.');
     }
   };
 

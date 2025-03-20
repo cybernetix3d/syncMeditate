@@ -19,6 +19,7 @@ import TraditionSelector from '@/src/components/faith/TraditionSelector';
 import Button from '@/src/components/common/Button';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
+import type { UserProfile } from '@/src/context/AuthProvider';
 
 export default function ProfileSettingsScreen() {
   const { user, updateUserProfile } = useAuth();
@@ -27,8 +28,13 @@ export default function ProfileSettingsScreen() {
   const [loading, setLoading] = useState(false);
   const { colors } = useTheme();
 
+  // Type guard function
+  const isUserProfile = (user: null | boolean | UserProfile): user is UserProfile => {
+    return user !== null && typeof user !== 'boolean';
+  };
+
   useEffect(() => {
-    if (user) {
+    if (isUserProfile(user)) {
       setDisplayName(user.display_name || '');
       setTradition(user.faith_preferences?.primaryTradition || 'secular');
     }
@@ -71,14 +77,6 @@ export default function ProfileSettingsScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidingView}
       >
-        <View style={[styles.header, { borderBottomColor: colors.mediumGray }]}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.headerText }]}>Edit Profile</Text>
-          <View style={styles.headerRight} />
-        </View>
-
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.profileImageContainer}>
             <View style={[styles.profileImage, { backgroundColor: colors.primary }]}>
@@ -140,26 +138,26 @@ export default function ProfileSettingsScreen() {
               <View style={styles.accountInfoItem}>
                 <Text style={[styles.accountInfoLabel, { color: colors.gray }]}>Email</Text>
                 <Text style={[styles.accountInfoValue, { color: colors.bodyText }]}>
-                  {user?.email || 'No email associated'}
+                  {isUserProfile(user) && user.email ? user.email : 'No email associated'}
                 </Text>
               </View>
               
               <View style={styles.accountInfoItem}>
                 <Text style={[styles.accountInfoLabel, { color: colors.gray }]}>Account Type</Text>
                 <Text style={[styles.accountInfoValue, { color: colors.bodyText }]}>
-                  {user?.email ? 'Registered User' : 'Anonymous User'}
+                  {isUserProfile(user) && user.email ? 'Registered User' : 'Anonymous User'}
                 </Text>
               </View>
               
               <View style={styles.accountInfoItem}>
                 <Text style={[styles.accountInfoLabel, { color: colors.gray }]}>Member Since</Text>
                 <Text style={[styles.accountInfoValue, { color: colors.bodyText }]}>
-                  {user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'Unknown'}
+                  {isUserProfile(user) && user.created_at ? new Date(user.created_at).toLocaleDateString() : 'Unknown'}
                 </Text>
               </View>
             </View>
 
-            {!user?.email && (
+            {(!isUserProfile(user) || !user.email) && (
               <View style={[styles.upgradeCard, { backgroundColor: colors.surface }]}>
                 <Ionicons name="alert-circle-outline" size={24} color={colors.primary} />
                 <View style={styles.upgradeTextContainer}>
@@ -197,27 +195,6 @@ const styles = StyleSheet.create({
   },
   keyboardAvoidingView: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  headerRight: {
-    width: 40,
   },
   scrollContent: {
     paddingBottom: 100,

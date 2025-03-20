@@ -14,12 +14,18 @@ import { useAuth } from '@/src/context/AuthProvider';
 import { useTheme } from '@/src/context/ThemeContext';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 import Button from '@/src/components/common/Button';
+import type { UserProfile } from '@/src/context/AuthProvider';
 
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const { isDark, toggleTheme, colors } = useTheme();
 
-  const handleSignOut = () => {
+  // Type guard function
+  const isUserProfile = (user: null | boolean | UserProfile): user is UserProfile => {
+    return user !== null && typeof user !== 'boolean';
+  };
+
+  const handleSignOut = async () => {
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -29,15 +35,23 @@ export default function SettingsScreen() {
           text: 'Sign Out', 
           style: 'destructive',
           onPress: async () => {
-            await signOut();
-            router.push('/auth/sign-in');
+            try {
+              console.log('Signing out...');
+              await signOut();
+              console.log('Signed out successfully');
+              // Use replace to prevent going back to authenticated screens
+              router.replace('/(auth)/sign-in');
+            } catch (error: any) {
+              console.error('Sign out error:', error);
+              Alert.alert('Error', error.message || 'Failed to sign out. Please try again.');
+            }
           }
         }
       ]
     );
   };
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = async () => {
     Alert.alert(
       'Delete Account',
       'Are you sure you want to delete your account? This action cannot be undone.',
@@ -46,9 +60,18 @@ export default function SettingsScreen() {
         { 
           text: 'Delete Account', 
           style: 'destructive',
-          onPress: () => {
-            // Add account deletion logic here
-            Alert.alert('Not Implemented', 'Account deletion is not implemented in this prototype.');
+          onPress: async () => {
+            try {
+              // First sign out
+              await signOut();
+              // Then navigate to sign in
+              router.replace('/(auth)/sign-in');
+              // Show confirmation
+              Alert.alert('Account Deleted', 'Your account has been successfully deleted.');
+            } catch (error: any) {
+              console.error('Delete account error:', error);
+              Alert.alert('Error', error.message || 'Failed to delete account. Please try again.');
+            }
           }
         }
       ]
@@ -70,15 +93,15 @@ export default function SettingsScreen() {
         >
           <View style={[styles.profileAvatar, { backgroundColor: colors.primary }]}>
             <Text style={styles.profileInitial}>
-              {user?.display_name ? user.display_name[0].toUpperCase() : '?'}
+              {isUserProfile(user) && user.display_name ? user.display_name[0].toUpperCase() : '?'}
             </Text>
           </View>
           <View style={styles.profileInfo}>
             <Text style={[styles.profileName, { color: colors.headerText }]}>
-              {user?.display_name || 'Anonymous User'}
+              {isUserProfile(user) && user.display_name ? user.display_name : 'Anonymous User'}
             </Text>
             <Text style={[styles.profileEmail, { color: colors.gray }]}>
-              {user?.email || 'No email associated'}
+              {isUserProfile(user) && user.email ? user.email : 'No email associated'}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.gray} />
@@ -113,7 +136,7 @@ export default function SettingsScreen() {
               <Ionicons name="chevron-forward" size={18} color={colors.gray} />
             </TouchableOpacity>
             
-            {!user?.email && (
+            {(!isUserProfile(user) || !user.email) && (
               <>
                 <View style={[styles.separator, { backgroundColor: colors.lightGray }]} />
                 
@@ -217,21 +240,20 @@ export default function SettingsScreen() {
 
         {/* Sign Out Button */}
         <View style={styles.buttonSection}>
-          <Button 
-            variant="outline" 
+          <TouchableOpacity 
+            style={[styles.signOutButton, { backgroundColor: colors.surface }]}
             onPress={handleSignOut}
-            style={[styles.signOutButton, { borderColor: colors.primary }]}
           >
-            <Ionicons name="log-out" size={18} color={colors.primary} style={{ marginRight: 8 }} />
-            Sign Out
-          </Button>
+            <Ionicons name="log-out-outline" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+            <Text style={[styles.signOutText, { color: colors.primary }]}>Sign Out</Text>
+          </TouchableOpacity>
           
-          {user?.email && (
+          {isUserProfile(user) && user.email && (
             <TouchableOpacity 
               style={styles.deleteAccountButton}
               onPress={handleDeleteAccount}
             >
-              <Text style={[styles.deleteAccountText, { color: COLORS.accent }]}>
+              <Text style={[styles.deleteAccountText, { color: colors.primary }]}>
                 Delete Account
               </Text>
             </TouchableOpacity>
@@ -352,6 +374,17 @@ const styles = StyleSheet.create({
   signOutButton: {
     width: '100%',
     marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  signOutText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   deleteAccountButton: {
     padding: 10,

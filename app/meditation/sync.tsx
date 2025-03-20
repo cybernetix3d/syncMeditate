@@ -14,6 +14,7 @@ import { useSyncMeditation } from '../../src/hooks/useSyncMeditation';
 import { useRealTimeParticipants } from '../../src/hooks/useRealTimeParticipants';
 import { usePrivacySettings } from '../../src/context/PrivacyProvider';
 import { useAuth } from '../../src/context/AuthProvider';
+import { UserProfile } from '../../src/context/AuthProvider';
 import { supabase } from '../../src/api/supabase';
 import Timer from '../../src/components/meditation/Timer';
 import LiveCounter from '../../src/components/meditation/LiveCounter';
@@ -22,6 +23,10 @@ import Button from '../../src/components/common/Button';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
+
+const isUserProfile = (user: boolean | UserProfile | null): user is UserProfile => {
+  return typeof user !== 'boolean' && user !== null && 'id' in user;
+};
 
 export default function SyncMeditationScreen() {
   const { id: eventId, duration: durationParam = '10' } = useLocalSearchParams();
@@ -38,25 +43,32 @@ export default function SyncMeditationScreen() {
   const { privacySettings } = usePrivacySettings();
   const { user } = useAuth();
 
+  // Handle different meditation types
+  const isQuickMeditation = !eventId || eventId === 'quick';
+  const isGlobalMeditation = eventId === 'global';
+
+  // Only use sync hooks for non-quick meditations
   const {
     joinSession,
     leaveSession,
     isJoined,
     participantCount: directCount,
     error: syncError,
-  } = useSyncMeditation(eventId as string || 'quick');
+  } = useSyncMeditation(isQuickMeditation ? null : isGlobalMeditation ? null : eventId as string);
 
   const { participantCount, participantLocations, loading: participantsLoading } =
-    useRealTimeParticipants(eventId as string || 'quick');
+    useRealTimeParticipants(isQuickMeditation ? null : isGlobalMeditation ? null : eventId as string);
 
   useEffect(() => {
     const fetchEventDetails = async () => {
-      if (!eventId || eventId === 'quick') {
+      if (isQuickMeditation || isGlobalMeditation) {
         setEventDetails({
-          title: 'Quick Meditation',
-          description: 'A personal meditation session',
+          title: isQuickMeditation ? 'Quick Meditation' : 'Global Meditation',
+          description: isQuickMeditation 
+            ? 'A personal meditation session' 
+            : 'Join others in a global meditation session',
           duration: durationMinutes,
-          is_global: false,
+          is_global: isGlobalMeditation,
         });
         setIsLoading(false);
         return;
@@ -83,10 +95,10 @@ export default function SyncMeditationScreen() {
     };
 
     fetchEventDetails();
-  }, [eventId, durationMinutes]);
+  }, [eventId, durationMinutes, isQuickMeditation, isGlobalMeditation]);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || isQuickMeditation || isGlobalMeditation) return;
     const startSession = async () => {
       await joinSession({
         locationPrecision: privacySettings.locationSharingLevel,
@@ -96,9 +108,11 @@ export default function SyncMeditationScreen() {
     };
     startSession();
     return () => {
-      leaveSession();
+      if (!isQuickMeditation && !isGlobalMeditation) {
+        leaveSession();
+      }
     };
-  }, [isLoading, privacySettings]);
+  }, [isLoading, privacySettings, isQuickMeditation, isGlobalMeditation]);
 
   useEffect(() => {
     if (syncError) {
@@ -112,13 +126,13 @@ export default function SyncMeditationScreen() {
 
   const handleComplete = () => {
     setMeditationState('COMPLETED');
-    if (user) {
+    if (isUserProfile(user) && !isQuickMeditation && !isGlobalMeditation) {
       const saveCompletion = async () => {
         try {
           await supabase.from('meditation_completions').insert([
             {
               user_id: user.id,
-              event_id: eventId as string || null,
+              event_id: eventId,
               duration: durationSeconds - remainingTime,
               completed: true,
             },
@@ -159,14 +173,18 @@ export default function SyncMeditationScreen() {
             text: 'End',
             style: 'destructive',
             onPress: () => {
-              leaveSession();
+              if (!isQuickMeditation && !isGlobalMeditation) {
+                leaveSession();
+              }
               router.back();
             },
           },
         ]
       );
     } else {
-      leaveSession();
+      if (!isQuickMeditation && !isGlobalMeditation) {
+        leaveSession();
+      }
       router.back();
     }
   };
@@ -195,7 +213,7 @@ export default function SyncMeditationScreen() {
         style={[styles.scrollView, { backgroundColor: colors.background }]} 
         contentContainerStyle={styles.scrollContent}
       >
-        <LiveCounter count={participantCount || directCount} />
+        {!isQuickMeditation && !isGlobalMeditation && <LiveCounter count={participantCount || directCount} />}
         <Timer
           duration={durationSeconds}
           remainingTime={remainingTime}

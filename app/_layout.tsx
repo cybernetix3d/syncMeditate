@@ -55,7 +55,7 @@ export default function RootLayout() {
 
 function AuthenticationGuard({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
-  const segments = useSegments();
+  const segments = useSegments() as string[];
   const router = useRouter();
   
   const [isNavigationReady, setIsNavigationReady] = useState(false);

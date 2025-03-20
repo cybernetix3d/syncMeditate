@@ -21,10 +21,10 @@ interface UseRealTimeParticipantsResult {
 
 /**
  * Hook for tracking real-time meditation participants
- * @param eventId ID of the meditation event
+ * @param eventId ID of the meditation event, or null for quick meditations
  * @returns Real-time participant data
  */
-export const useRealTimeParticipants = (eventId: string): UseRealTimeParticipantsResult => {
+export const useRealTimeParticipants = (eventId: string | null): UseRealTimeParticipantsResult => {
   const [participantCount, setParticipantCount] = useState(0);
   const [participantLocations, setParticipantLocations] = useState<ParticipantLocation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,40 +143,19 @@ export const useRealTimeParticipants = (eventId: string): UseRealTimeParticipant
 
   // Handle participant update
   const handleUpdate = (updatedParticipant: any) => {
-    // Handle status change
-    if ('active' in updatedParticipant) {
-      if (updatedParticipant.active) {
-        // Participant became active
-        setParticipantCount(prev => prev + 1);
-      } else {
-        // Participant became inactive
-        setParticipantCount(prev => Math.max(0, prev - 1));
-        // Remove from locations
-        setParticipantLocations(prev => 
-          prev.filter(p => p.id !== updatedParticipant.id)
-        );
-        return;
-      }
+    // Update participant count if active status changed
+    if (!updatedParticipant.active) {
+      setParticipantCount(prev => Math.max(0, prev - 1));
+      setParticipantLocations(prev => prev.filter(p => p.id !== updatedParticipant.id));
     }
 
-    // Handle location update
+    // Update location if changed
     if (updatedParticipant.location) {
       const location = pointToLocation(updatedParticipant.location as unknown as string);
       if (location) {
         setParticipantLocations(prev => {
-          const existing = prev.findIndex(p => p.id === updatedParticipant.id);
-          if (existing >= 0) {
-            // Update existing
-            const updated = [...prev];
-            updated[existing] = {
-              id: updatedParticipant.id,
-              location,
-              precision: updatedParticipant.location_precision,
-              tradition: updatedParticipant.tradition
-            };
-            return updated;
-          } else {
-            // Add new
+          const index = prev.findIndex(p => p.id === updatedParticipant.id);
+          if (index === -1) {
             return [
               ...prev,
               {
@@ -187,22 +166,25 @@ export const useRealTimeParticipants = (eventId: string): UseRealTimeParticipant
               }
             ];
           }
+          const newLocations = [...prev];
+          newLocations[index] = {
+            id: updatedParticipant.id,
+            location,
+            precision: updatedParticipant.location_precision,
+            tradition: updatedParticipant.tradition
+          };
+          return newLocations;
         });
       }
     }
   };
 
   // Handle participant deletion
-  const handleDelete = (oldParticipant: any) => {
-    // Decrement count if participant was active
-    if (oldParticipant.active) {
+  const handleDelete = (deletedParticipant: any) => {
+    if (deletedParticipant.active) {
       setParticipantCount(prev => Math.max(0, prev - 1));
     }
-
-    // Remove from locations
-    setParticipantLocations(prev => 
-      prev.filter(p => p.id !== oldParticipant.id)
-    );
+    setParticipantLocations(prev => prev.filter(p => p.id !== deletedParticipant.id));
   };
 
   return {

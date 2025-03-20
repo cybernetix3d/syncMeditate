@@ -1,83 +1,47 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthProvider';
+import { useEffect, useState } from 'react';
 import { supabase } from '../api/supabase';
-import { getLocationWithPrivacy, LocationPrecision, locationToPoint } from '../services/geolocation';
-
-interface SyncMeditationOptions {
-  locationPrecision: LocationPrecision | string;
-  anonymous: boolean;
-  shareTradition: boolean;
-}
+import { useAuth } from '../context/AuthProvider';
+import { UserProfile } from '../context/AuthProvider';
+import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 interface UseSyncMeditationResult {
-  joinSession: (options: SyncMeditationOptions) => Promise<void>;
+  joinSession: (options: {
+    locationPrecision: string;
+    anonymous: boolean;
+    shareTradition: boolean;
+  }) => Promise<void>;
   leaveSession: () => Promise<void>;
-  isJoined: boolean;
   participantCount: number;
+  isJoined: boolean;
+  loading: boolean;
   error: string | null;
 }
 
+interface MeditationParticipant {
+  active: boolean;
+  event_id: string;
+  user_id: string;
+}
+
+const isUserProfile = (user: boolean | UserProfile | null): user is UserProfile => {
+  return typeof user !== 'boolean' && user !== null && 'id' in user;
+};
+
 /**
- * Hook for managing synchronized meditation sessions
- * @param eventId ID of the meditation event
- * @returns Functions and state for meditation synchronization
+ * Hook for syncing meditation session participation
+ * @param eventId ID of the meditation event, or null for quick meditations
+ * @returns Functions to join/leave session and participant count
  */
-export const useSyncMeditation = (eventId: string): UseSyncMeditationResult => {
+export const useSyncMeditation = (eventId: string | null): UseSyncMeditationResult => {
   const { user } = useAuth();
-  const [isJoined, setIsJoined] = useState(false);
   const [participantCount, setParticipantCount] = useState(0);
-  const [participantId, setParticipantId] = useState<string | null>(null);
+  const [isJoined, setIsJoined] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Set up real-time subscription to participant count
+  // Check if user is already joined
   useEffect(() => {
-    if (!eventId) return;
-
-    const subscription = supabase
-      .channel(`meditation-count-${eventId}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'meditation_participants',
-        filter: `event_id=eq.${eventId}`
-      }, () => {
-        // When there's any change, update the count
-        countParticipants();
-      })
-      .subscribe();
-
-    // Initial count
-    countParticipants();
-
-    // Cleanup subscription on unmount
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [eventId]);
-
-  // Count active participants
-  const countParticipants = async () => {
-    try {
-      const { count, error } = await supabase
-        .from('meditation_participants')
-        .select('*', { count: 'exact', head: true })
-        .eq('event_id', eventId)
-        .eq('active', true);
-
-      if (error) {
-        console.error('Error counting participants:', error);
-        return;
-      }
-
-      setParticipantCount(count || 0);
-    } catch (error) {
-      console.error('Error in countParticipants:', error);
-    }
-  };
-
-  // Check if current user is already joined
-  useEffect(() => {
-    if (!user || !eventId) {
+    if (!eventId || !isUserProfile(user)) {
       setIsJoined(false);
       return;
     }
@@ -92,124 +56,147 @@ export const useSyncMeditation = (eventId: string): UseSyncMeditationResult => {
           .eq('active', true)
           .maybeSingle();
 
-        if (error) {
-          console.error('Error checking if joined:', error);
-          return;
-        }
-
+        if (error) throw error;
         setIsJoined(!!data);
-        if (data) {
-          setParticipantId(data.id);
-        }
-      } catch (error) {
-        console.error('Error in checkIfJoined:', error);
+      } catch (err: any) {
+        console.error('Error checking if joined:', err);
+        setError(err.message);
       }
     };
 
     checkIfJoined();
-  }, [user, eventId]);
+  }, [eventId, user]);
 
-  // Join meditation session
-  const joinSession = async (options: SyncMeditationOptions) => {
-    if (!user || !eventId) {
-      setError('User not authenticated or event ID missing');
+  useEffect(() => {
+    if (!eventId) {
+      setLoading(false);
       return;
     }
 
-    if (isJoined) {
-      // Already joined, nothing to do
-      return;
+    const fetchParticipantCount = async () => {
+      try {
+        const { count, error } = await supabase
+          .from('meditation_participants')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', eventId)
+          .eq('active', true);
+
+        if (error) throw error;
+        setParticipantCount(count || 0);
+      } catch (err: any) {
+        console.error('Error fetching participant count:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchParticipantCount();
+
+    // Subscribe to changes
+    const subscription = supabase
+      .channel(`participants-${eventId}`)
+      .on(
+        'postgres_changes' as const,
+        {
+          event: '*',
+          schema: 'public',
+          table: 'meditation_participants',
+          filter: `event_id=eq.${eventId}`
+        },
+        (payload: RealtimePostgresChangesPayload<MeditationParticipant>) => {
+          if (payload.eventType === 'INSERT' && payload.new?.active) {
+            setParticipantCount(prev => prev + 1);
+          } else if (payload.eventType === 'DELETE' || 
+                    (payload.eventType === 'UPDATE' && !payload.new?.active)) {
+            setParticipantCount(prev => Math.max(0, prev - 1));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [eventId]);
+
+  const joinSession = async (options: {
+    locationPrecision: string;
+    anonymous: boolean;
+    shareTradition: boolean;
+  }) => {
+    if (!isUserProfile(user)) {
+      throw new Error('User not authenticated');
     }
 
     try {
+      setLoading(true);
       setError(null);
 
-      // Get user location with privacy controls
-      const location = await getLocationWithPrivacy(
-        options.locationPrecision as LocationPrecision
-      );
-
-      // Convert location to PostgreSQL point format
-      const locationPoint = locationToPoint(location);
-
-      // Get user's faith tradition if they're sharing it
-      let tradition = null;
-      if (options.shareTradition && user.faith_preferences?.primaryTradition) {
-        tradition = user.faith_preferences.primaryTradition;
-      }
-
-      // Create participant record
-      const { data, error } = await supabase
-        .from('meditation_participants')
-        .insert([
-          {
-            event_id: eventId,
-            user_id: user.id,
-            joined_at: new Date().toISOString(),
-            active: true,
-            location: locationPoint,
-            location_precision: options.locationPrecision,
-            tradition: tradition,
-            anonymous_mode: options.anonymous,
-            session_id: Math.random().toString(36).substring(2, 15) // Generate random session ID
-          }
-        ])
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Error joining session:', error);
-        setError('Failed to join meditation session');
+      // For quick meditations, we don't track participants
+      if (!eventId) {
         return;
       }
 
-      // Update state
+      const { error } = await supabase
+        .from('meditation_participants')
+        .upsert({
+          event_id: eventId,
+          user_id: user.id,
+          active: true,
+          location_precision: options.locationPrecision,
+          anonymous_mode: options.anonymous,
+          tradition: options.shareTradition ? user.faith_preferences?.primaryTradition : null
+        });
+
+      if (error) throw error;
       setIsJoined(true);
-      setParticipantId(data.id);
-    } catch (error) {
-      console.error('Error in joinSession:', error);
-      setError('An unexpected error occurred');
+    } catch (err: any) {
+      console.error('Error joining session:', err);
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Leave meditation session
   const leaveSession = async () => {
-    if (!user || !eventId || !isJoined || !participantId) {
-      return;
+    if (!isUserProfile(user)) {
+      throw new Error('User not authenticated');
     }
 
     try {
+      setLoading(true);
       setError(null);
 
-      // Update participant record
-      const { error } = await supabase
-        .from('meditation_participants')
-        .update({
-          active: false,
-          left_at: new Date().toISOString()
-        })
-        .eq('id', participantId);
-
-      if (error) {
-        console.error('Error leaving session:', error);
-        setError('Failed to leave meditation session');
+      // For quick meditations, we don't track participants
+      if (!eventId) {
         return;
       }
 
-      // Update state
+      const { error } = await supabase
+        .from('meditation_participants')
+        .update({ active: false })
+        .eq('event_id', eventId)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
       setIsJoined(false);
-      setParticipantId(null);
-    } catch (error) {
-      console.error('Error in leaveSession:', error);
-      setError('An unexpected error occurred');
+    } catch (err: any) {
+      console.error('Error leaving session:', err);
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
   return {
     joinSession,
     leaveSession,
-    isJoined,
     participantCount,
+    isJoined,
+    loading,
     error
   };
 };
