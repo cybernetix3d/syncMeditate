@@ -1,5 +1,5 @@
 import React, { createContext, useContext, ReactNode } from 'react';
-import { useColorScheme } from '@/components/useColorScheme';
+import useColorScheme from '@/src/hooks/useColorScheme';
 import { getThemeColors } from '@/src/constants/Styles';
 
 type ThemeContextType = {

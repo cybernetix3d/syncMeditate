@@ -10,15 +10,19 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '@/src/context/AuthProvider';
 import TraditionSelector from '@/src/components/faith/TraditionSelector';
 import Button from '@/src/components/common/Button';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
+import { supabase } from '@/src/api/supabase';
 import type { UserProfile } from '@/src/context/AuthProvider';
 
 export default function ProfileSettingsScreen() {
@@ -26,6 +30,7 @@ export default function ProfileSettingsScreen() {
   const [displayName, setDisplayName] = useState('');
   const [tradition, setTradition] = useState('secular');
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const { colors } = useTheme();
 
   // Type guard function
@@ -39,6 +44,136 @@ export default function ProfileSettingsScreen() {
       setTradition(user.faith_preferences?.primaryTradition || 'secular');
     }
   }, [user]);
+
+  const pickImage = async () => {
+    try {
+      if (Platform.OS === 'web') {
+        // Create an input element for file selection
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        
+        // Create a promise to handle the file selection
+        const fileSelected = new Promise((resolve) => {
+          input.onchange = (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (file) {
+              resolve(URL.createObjectURL(file));
+            }
+          };
+        });
+        
+        // Trigger file selection dialog
+        input.click();
+        
+        // Wait for file selection
+        const imageUri = await fileSelected;
+        if (imageUri) {
+          await uploadAvatar(imageUri as string);
+        }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Please grant camera roll permissions to upload a profile photo.');
+          return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.5,
+        });
+
+        if (!result.canceled) {
+          await uploadAvatar(result.assets[0].uri);
+        }
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const uploadAvatar = async (uri: string) => {
+    try {
+      setUploading(true);
+      console.log('Starting upload process...', { uri });
+
+      if (!isUserProfile(user)) {
+        throw new Error('No valid user profile');
+      }
+
+      let blob: Blob;
+      if (Platform.OS === 'web') {
+        // For web, we need to fetch the file differently
+        const response = await fetch(uri);
+        const blobData = await response.blob();
+        // Create a new blob with proper mime type
+        blob = new Blob([blobData], { type: 'image/jpeg' });
+        console.log('Web blob created:', { size: blob.size, type: blob.type });
+      } else {
+        // For native platforms
+        const response = await fetch(uri);
+        blob = await response.blob();
+      }
+
+      console.log('Blob created, size:', blob.size, 'bytes');
+
+      // Generate file name
+      const fileName = `${user.id}-${Date.now()}.jpg`;
+      console.log('Uploading as:', fileName);
+
+      // Upload directly without checking bucket (bucket check was causing issues)
+      console.log('Attempting upload...');
+      const { error: uploadError, data: uploadData } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, blob, {
+          contentType: 'image/jpeg',
+          upsert: true
+        });
+
+      if (uploadError) {
+        console.error('Upload error details:', uploadError);
+        throw new Error(`Upload failed: ${uploadError.message}`);
+      }
+
+      console.log('Upload successful, getting URL...');
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+      if (!urlData?.publicUrl) {
+        throw new Error('Failed to get public URL for uploaded file');
+      }
+
+      console.log('Generated public URL:', urlData.publicUrl);
+
+      // Update user profile with new avatar URL
+      const { error: updateError } = await updateUserProfile({
+        avatar_url: urlData.publicUrl
+      });
+
+      if (updateError) {
+        console.error('Profile update error:', updateError);
+        throw new Error(`Profile update failed: ${updateError.message}`);
+      }
+
+      console.log('Profile updated successfully with new avatar');
+      Alert.alert('Success', 'Profile photo updated successfully.');
+    } catch (error: any) {
+      console.error('Full error details:', error);
+      Alert.alert(
+        'Upload Error',
+        `Failed to upload profile photo: ${error?.message || 'Unknown error'}. Please try again.`
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!displayName.trim()) {
@@ -79,14 +214,34 @@ export default function ProfileSettingsScreen() {
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.profileImageContainer}>
-            <View style={[styles.profileImage, { backgroundColor: colors.primary }]}>
-              <Text style={styles.profileInitial}>
-                {displayName ? displayName[0].toUpperCase() : '?'}
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.changeImageButton}>
+            <TouchableOpacity 
+              style={[styles.profileImage, { backgroundColor: colors.primary }]}
+              onPress={pickImage}
+              disabled={uploading}
+            >
+              {isUserProfile(user) && user.avatar_url ? (
+                <Image
+                  source={{ uri: user.avatar_url }}
+                  style={styles.avatarImage}
+                />
+              ) : (
+                <Text style={styles.profileInitial}>
+                  {displayName ? displayName[0].toUpperCase() : '?'}
+                </Text>
+              )}
+              {uploading && (
+                <View style={styles.uploadingOverlay}>
+                  <ActivityIndicator color={COLORS.white} />
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.changeImageButton}
+              onPress={pickImage}
+              disabled={uploading}
+            >
               <Text style={[styles.changeImageText, { color: colors.primary }]}>
-                Change Photo
+                {uploading ? 'Uploading...' : 'Change Photo'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -306,5 +461,17 @@ const styles = StyleSheet.create({
     padding: 16,
     borderTopWidth: 1,
     borderTopColor: COLORS.lightGray,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 50,
+  },
+  uploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

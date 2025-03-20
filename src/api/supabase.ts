@@ -11,6 +11,7 @@ export type Database = {
           id: string;
           email: string | null;
           display_name: string | null;
+          avatar_url: string | null;
           created_at: string;
           last_active: string;
           privacy_settings: {
@@ -26,6 +27,7 @@ export type Database = {
           id: string;
           email?: string | null;
           display_name?: string | null;
+          avatar_url?: string | null;
           created_at?: string;
           last_active?: string;
           privacy_settings?: {
@@ -41,6 +43,7 @@ export type Database = {
           id?: string;
           email?: string | null;
           display_name?: string | null;
+          avatar_url?: string | null;
           created_at?: string;
           last_active?: string;
           privacy_settings?: {
@@ -109,10 +112,9 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     storage: SecureStoreAdapter,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
-    flowType: 'pkce',
+    detectSessionInUrl: Platform.OS === 'web',
+    flowType: Platform.OS === 'web' ? 'pkce' : 'implicit',
     debug: __DEV__,
-    storageKey: 'supabase.auth.token',
   },
 });
 

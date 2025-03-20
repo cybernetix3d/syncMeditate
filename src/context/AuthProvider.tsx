@@ -9,6 +9,7 @@ export interface UserProfile {
   id: string;
   email?: string | null;
   display_name?: string | null;
+  avatar_url?: string | null;
   created_at?: string;
   privacy_settings?: {
     locationSharingLevel: 'none' | 'country' | 'city' | 'precise';
@@ -78,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Fetch user profile with proper headers
       const { data, error } = await supabase
         .from('users')
-        .select('id, email, display_name, privacy_settings, faith_preferences')
+        .select('id, email, display_name, avatar_url, privacy_settings, faith_preferences')
         .eq('id', userId)
         .single();
 
@@ -111,6 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             id: userId,
             email: newProfile.email,
             display_name: newProfile.display_name,
+            avatar_url: newProfile.avatar_url,
             privacy_settings: newProfile.privacy_settings,
             faith_preferences: newProfile.faith_preferences
           };
@@ -129,6 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: userId,
           email: data.email,
           display_name: data.display_name,
+          avatar_url: data.avatar_url,
           privacy_settings: data.privacy_settings,
           faith_preferences: data.faith_preferences
         };
@@ -394,23 +397,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: new Error('Failed to sign up') };
       }
 
-      console.log('Sign up successful, verification email sent');
+      console.log('Sign up successful, creating profile...');
       
-      // Create user profile
-      const { error: profileError } = await supabase
-        .from('users')
-        .insert([
-          {
-            id: data.user.id,
-            email,
-            display_name: displayName,
-            created_at: new Date().toISOString()
+      // Create user profile with retry logic
+      let profileError;
+      for (let i = 0; i < 3; i++) {
+        try {
+          const { error: createError } = await supabase
+            .from('users')
+            .insert([
+              {
+                id: data.user.id,
+                email,
+                display_name: displayName,
+                created_at: new Date().toISOString(),
+                privacy_settings: {
+                  locationSharingLevel: 'none',
+                  useAnonymousId: false,
+                  shareTradition: false
+                }
+              }
+            ])
+            .single();
+
+          if (!createError) {
+            console.log('Profile created successfully');
+            profileError = null;
+            break;
           }
-        ]);
+          
+          profileError = createError;
+          console.error(`Attempt ${i + 1} failed:`, createError);
+          // Wait a bit before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (e) {
+          profileError = e;
+          console.error(`Attempt ${i + 1} failed with exception:`, e);
+        }
+      }
 
       if (profileError) {
-        console.error('Error creating user profile:', profileError);
-        return { error: profileError };
+        console.error('Failed to create profile after retries:', profileError);
+        // Don't return error here - the user is created but profile creation failed
+        // They can try updating their profile later
       }
 
       return { 
@@ -419,7 +448,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         message: 'Please check your email to verify your account'
       };
     } catch (error) {
-      console.error('Error signing up:', error);
+      console.error('Error in signUp:', error);
       return { error: new Error('An unexpected error occurred') };
     }
   };
@@ -509,6 +538,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: currentSession.user.id,
         email: currentSession.user.email,
         display_name: data.display_name,
+        avatar_url: data.avatar_url,
         privacy_settings: data.privacy_settings,
         faith_preferences: data.faith_preferences
       };
@@ -519,7 +549,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: updatedProfile, error } = await supabase
         .from('users')
         .upsert(updateData)
-        .select('id, email, display_name, privacy_settings, faith_preferences')
+        .select('id, email, display_name, avatar_url, privacy_settings, faith_preferences')
         .single();
 
       if (error) {
@@ -534,6 +564,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: currentSession.user.id,
         email: updatedProfile.email,
         display_name: updatedProfile.display_name,
+        avatar_url: updatedProfile.avatar_url,
         privacy_settings: updatedProfile.privacy_settings,
         faith_preferences: updatedProfile.faith_preferences
       };

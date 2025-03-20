@@ -18,7 +18,9 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Your location is used to show you on the global meditation map, with privacy controls available."
+        "NSLocationWhenInUseUsageDescription": "Your location is used to show you on the global meditation map, with privacy controls available.",
+        "NSPhotoLibraryUsageDescription": "Allow access to your photo library to select a profile photo.",
+        "NSCameraUsageDescription": "Allow access to your camera to take a profile photo."
       }
     },
     "android": {
@@ -28,7 +30,10 @@
       },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
       ]
     },
     "plugins": [
@@ -36,6 +41,13 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Allow SyncMeditate to use your location to show you on the global meditation map."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow SyncMeditate to access your photos to set your profile photo.",
+          "cameraPermission": "Allow SyncMeditate to access your camera to take profile photos."
         }
       ],
       "expo-secure-store"

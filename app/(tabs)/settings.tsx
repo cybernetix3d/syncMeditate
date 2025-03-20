@@ -6,7 +6,8 @@ import {
   TouchableOpacity, 
   ScrollView, 
   Switch,
-  Alert
+  Alert,
+  Image
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -92,9 +93,16 @@ export default function SettingsScreen() {
           activeOpacity={0.7}
         >
           <View style={[styles.profileAvatar, { backgroundColor: colors.primary }]}>
-            <Text style={styles.profileInitial}>
-              {isUserProfile(user) && user.display_name ? user.display_name[0].toUpperCase() : '?'}
-            </Text>
+            {isUserProfile(user) && user.avatar_url ? (
+              <Image
+                source={{ uri: user.avatar_url }}
+                style={styles.avatarImage}
+              />
+            ) : (
+              <Text style={styles.profileInitial}>
+                {isUserProfile(user) && user.display_name ? user.display_name[0].toUpperCase() : '?'}
+              </Text>
+            )}
           </View>
           <View style={styles.profileInfo}>
             <Text style={[styles.profileName, { color: colors.headerText }]}>
@@ -391,5 +399,10 @@ const styles = StyleSheet.create({
   },
   deleteAccountText: {
     fontSize: 14,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 25,
   },
 });
