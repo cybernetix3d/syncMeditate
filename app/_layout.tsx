@@ -60,8 +60,9 @@ function AuthenticationGuard({ children }: { children: JSX.Element }) {
   
   const [isNavigationReady, setIsNavigationReady] = useState(false);
   
-  // Check if user is in auth group
+  // Check if user is in auth group and current screen
   const isInAuthGroup = segments[0] === 'auth';
+  const isOnboardingScreen = segments.length > 1 && segments[0] === 'auth' && segments[1] === 'onboarding';
   
   useEffect(() => {
     if (!isNavigationReady) {
@@ -71,22 +72,33 @@ function AuthenticationGuard({ children }: { children: JSX.Element }) {
     
     if (loading) return;
     
-    const isAuthenticated = !!user;
+    // User is not authenticated (user === false)
+    if (user === false) {
+      // Only redirect if not already in auth group
+      if (!isInAuthGroup) {
+        router.replace('/auth/sign-in');
+      }
+      return;
+    }
     
-    if (
-      // If the user is not authenticated but not in the auth group
-      (!isAuthenticated && !isInAuthGroup) ||
-      // Or if the user is on the root of the app without being authenticated
-      (!isAuthenticated && segments.length === 0)
-    ) {
-      // Redirect to sign in page
-      router.replace('/auth/sign-in');
-    } else if (isAuthenticated && isInAuthGroup && segments[1] !== 'onboarding') {
-      // If user is authenticated and trying to access auth screens (not onboarding)
+    // User is authenticated (user === true or user is an object)
+    
+    // If the user is authenticated and trying to access auth screens (not onboarding)
+    if (user && isInAuthGroup && !isOnboardingScreen) {
       router.replace('/(tabs)');
-    } else if (isAuthenticated && !user.display_name && segments[1] !== 'onboarding') {
-      // If user is authenticated but hasn't completed onboarding
+      return;
+    }
+    
+    // If user is authenticated but hasn't completed onboarding
+    // This checks if user is true (authenticated but no profile)
+    // or if user is an object but doesn't have a display_name
+    if (
+      (user === true || 
+       (typeof user === 'object' && user !== null && !user.display_name)) && 
+      !isOnboardingScreen
+    ) {
       router.replace('/auth/onboarding');
+      return;
     }
   }, [user, loading, segments, isNavigationReady]);
   

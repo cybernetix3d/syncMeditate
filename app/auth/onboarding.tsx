@@ -13,17 +13,21 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '@/src/context/AuthProvider';
-import { usePrivacySettings } from '@/src/context/PrivacyProvider';
-import TraditionSelector, { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
+import { usePrivacySettings, PrivacySettings, LocationSharingLevel } from '@/src/context/PrivacyProvider';
+import { supabase } from '@/src/api/supabase';
+import TraditionSelector from '@/src/components/faith/TraditionSelector';
 import PrivacyToggle from '@/src/components/common/PrivacyToggle';
 import Button from '@/src/components/common/Button';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
+import * as Location from 'expo-location';
 
 export default function OnboardingScreen() {
   const { user, updateUserProfile } = useAuth();
   const { privacySettings, updatePrivacySettings, requestLocationPermission } = usePrivacySettings();
-  const [displayName, setDisplayName] = useState(user?.display_name || '');
+  const [displayName, setDisplayName] = useState(
+    typeof user === 'object' && user !== null ? user.display_name || '' : ''
+  );
   const [tradition, setTradition] = useState('secular');
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
@@ -32,6 +36,12 @@ export default function OnboardingScreen() {
   const totalSteps = 3;
   
   const handleNext = async () => {
+    // Validate display name on first step
+    if (currentStep === 1 && !displayName.trim()) {
+      Alert.alert('Display Name Required', 'Please enter a display name to continue.');
+      return;
+    }
+    
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
     } else {
@@ -46,38 +56,71 @@ export default function OnboardingScreen() {
   };
   
   const handleComplete = async () => {
-    if (!displayName && !user?.display_name) {
+    console.log('handleComplete called with state:', {
+      displayName,
+      tradition,
+      privacySettings,
+      user
+    });
+
+    if (!displayName.trim()) {
       Alert.alert('Display Name Required', 'Please enter a display name to continue.');
       setCurrentStep(1);
       return;
     }
-    
+
+    // Check if we have a valid user object
+    if (!user || typeof user !== 'object') {
+      console.error('Invalid user state:', user);
+      Alert.alert('Session Error', 'Your session appears to be invalid. Please try signing out and back in.');
+      return;
+    }
+
     try {
       setLoading(true);
       
-      // Request location permission if user enabled location sharing
+      // Request location permission if needed
       if (privacySettings.locationSharingLevel !== 'none') {
-        await requestLocationPermission();
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        console.log('Location permission status:', status);
+        if (status !== 'granted') {
+          console.log('Location permission denied, updating privacy settings');
+          const updatedSettings: PrivacySettings = {
+            ...privacySettings,
+            locationSharingLevel: 'none'
+          };
+          await updatePrivacySettings(updatedSettings);
+        }
       }
-      
+
       // Update user profile
-      const { error } = await updateUserProfile({
+      console.log('Updating user profile...');
+      const { data: profile, error: updateError } = await updateUserProfile({
         display_name: displayName,
         privacy_settings: privacySettings,
         faith_preferences: {
           primaryTradition: tradition
         }
       });
-      
-      if (error) {
-        Alert.alert('Update Error', error.message);
+
+      if (updateError) {
+        console.error('Error updating profile:', updateError);
+        Alert.alert('Error', 'Failed to save your profile. Please check your connection and try again.');
         return;
       }
-      
-      // Navigate to home screen
+
+      if (!profile) {
+        console.error('No profile returned after update');
+        Alert.alert('Error', 'Failed to save your profile. Please try again.');
+        return;
+      }
+
+      console.log('Profile updated successfully:', profile);
+      console.log('Navigating to tabs...');
       router.replace('/(tabs)');
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'An unexpected error occurred');
+    } catch (error) {
+      console.error('Error in handleComplete:', error);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -166,7 +209,7 @@ export default function OnboardingScreen() {
             onPress={() => updatePrivacySettings({ locationSharingLevel: 'none' })}
           >
             <Ionicons 
-              name="location-off-outline" 
+              name="location-outline" 
               size={24} 
               color={privacySettings.locationSharingLevel === 'none' ? colors.primary : colors.gray} 
             />

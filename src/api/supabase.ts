@@ -65,46 +65,77 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 // Storage adapter for secure persistent session storage
 const SecureStoreAdapter = {
   getItem: async (key: string): Promise<string | null> => {
-    if (Platform.OS === 'web') {
-      return localStorage.getItem(key);
+    try {
+      if (Platform.OS === 'web') {
+        return localStorage.getItem(key);
+      }
+      const value = await SecureStore.getItemAsync(key);
+      console.log('Getting item from storage:', key, value ? 'Found' : 'Not found');
+      return value;
+    } catch (error) {
+      console.error('Error getting item from storage:', error);
+      return null;
     }
-    return await SecureStore.getItemAsync(key);
   },
   setItem: async (key: string, value: string): Promise<void> => {
-    if (Platform.OS === 'web') {
-      localStorage.setItem(key, value);
-      return;
+    try {
+      if (Platform.OS === 'web') {
+        localStorage.setItem(key, value);
+        return;
+      }
+      await SecureStore.setItemAsync(key, value);
+      console.log('Setting item in storage:', key, 'Success');
+    } catch (error) {
+      console.error('Error setting item in storage:', error);
     }
-    await SecureStore.setItemAsync(key, value);
   },
   removeItem: async (key: string): Promise<void> => {
-    if (Platform.OS === 'web') {
-      localStorage.removeItem(key);
-      return;
+    try {
+      if (Platform.OS === 'web') {
+        localStorage.removeItem(key);
+        return;
+      }
+      await SecureStore.deleteItemAsync(key);
+      console.log('Removing item from storage:', key, 'Success');
+    } catch (error) {
+      console.error('Error removing item from storage:', error);
     }
-    await SecureStore.deleteItemAsync(key);
   }
 };
 
-// Create Supabase client
+// Create Supabase client with updated configuration
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: SecureStoreAdapter,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    flowType: 'pkce',
+    debug: __DEV__,
+    storageKey: 'supabase.auth.token',
   },
 });
 
 // Helper function to check if Supabase is connected
 export const checkSupabaseConnection = async () => {
   try {
-    const { count, error } = await supabase
+    console.log('Checking Supabase connection...');
+    
+    // First check auth connection
+    const { data: { session }, error: authError } = await supabase.auth.getSession();
+    if (authError) {
+      console.error('Supabase auth connection error:', authError.message);
+      return false;
+    }
+    console.log('Auth connection successful');
+
+    // Then check database connection
+    const { count, error: dbError } = await supabase
       .from('meditation_events')
       .select('*', { count: 'exact', head: true });
     
-    if (error) {
-      console.error('Supabase connection error:', error.message);
+    if (dbError) {
+      console.error('Supabase database connection error:', dbError.message);
       return false;
     }
     

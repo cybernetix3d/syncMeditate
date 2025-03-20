@@ -18,6 +18,7 @@ import { useAuth } from '@/src/context/AuthProvider';
 import Button from '@/src/components/common/Button';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
+import { EmailVerification } from '@/src/components/auth/EmailVerification';
 
 export default function SignInScreen() {
   const { signIn, signInAnonymously } = useAuth();
@@ -25,6 +26,7 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
   const { colors } = useTheme();
   
   const handleSignIn = async () => {
@@ -38,7 +40,11 @@ export default function SignInScreen() {
       const { error } = await signIn(email, password);
       
       if (error) {
-        Alert.alert('Sign In Error', error.message);
+        if (error.message.includes('Email not confirmed')) {
+          setNeedsVerification(true);
+        } else {
+          Alert.alert('Sign In Error', error.message);
+        }
       }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'An unexpected error occurred');
@@ -65,6 +71,30 @@ export default function SignInScreen() {
   const handleSignUp = () => {
     router.push('/auth/sign-up');
   };
+
+  if (needsVerification) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <StatusBar style="dark" />
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => setNeedsVerification(false)}
+        >
+          <Ionicons name="arrow-back" size={24} color={colors.primary} />
+        </TouchableOpacity>
+        <EmailVerification 
+          email={email} 
+          onResendSuccess={() => {
+            Alert.alert(
+              'Verification Email Sent',
+              'Please check your email and click the verification link.',
+              [{ text: 'OK', onPress: () => setNeedsVerification(false) }]
+            );
+          }}
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -260,5 +290,11 @@ const styles = StyleSheet.create({
   signUpLink: {
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    padding: 10,
   },
 });
