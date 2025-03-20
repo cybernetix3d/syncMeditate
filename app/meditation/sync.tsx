@@ -129,6 +129,27 @@ export default function SyncMeditationScreen() {
     if (isUserProfile(user) && !isQuickMeditation && !isGlobalMeditation) {
       const saveCompletion = async () => {
         try {
+          // First update the meditation_participants record
+          const { data: participantData } = await supabase
+            .from('meditation_participants')
+            .select('id')
+            .eq('event_id', eventId)
+            .eq('user_id', user.id)
+            .eq('active', true)
+            .is('left_at', null)
+            .single();
+
+          if (participantData) {
+            await supabase
+              .from('meditation_participants')
+              .update({
+                active: false,
+                left_at: new Date().toISOString()
+              })
+              .eq('id', participantData.id);
+          }
+
+          // Then save to meditation_completions
           await supabase.from('meditation_completions').insert([
             {
               user_id: user.id,
@@ -137,6 +158,7 @@ export default function SyncMeditationScreen() {
               completed: true,
             },
           ]);
+
           setTimeout(() => {
             router.push({
               pathname: '/meditation/complete',

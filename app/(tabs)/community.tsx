@@ -35,6 +35,16 @@ interface GlobalActivity {
   count: number;
 }
 
+interface MeditationEvent {
+  duration: number;
+}
+
+interface CompletedSession {
+  joined_at: string;
+  left_at: string;
+  meditation_events: MeditationEvent;
+}
+
 export default function CommunityScreen() {
   const { user } = useAuth();
   const router = useRouter();
@@ -53,21 +63,129 @@ export default function CommunityScreen() {
   const fetchCommunityData = async () => {
     try {
       setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setStats({
-        total_users: 1248,
-        active_now: 37,
-        total_sessions: 8542,
-        global_minutes: 428760,
+
+      // Get total users count from user_profiles
+      const { data: users, error: usersError } = await supabase
+        .from('user_profiles')
+        .select('id');
+
+      if (usersError) {
+        console.error('Error fetching total users:', usersError);
+      }
+
+      // Get active users (users in ongoing meditation sessions)
+      const { data: activeUsers, error: activeError } = await supabase
+        .from('meditation_participants')
+        .select('id')
+        .eq('active', true)
+        .is('left_at', null);
+
+      if (activeError) {
+        console.error('Error fetching active users:', activeError);
+      }
+
+      // Get completed meditation sessions and their durations
+      const { data: completedSessions, error: completedError } = await supabase
+        .from('meditation_participants')
+        .select(`
+          id,
+          joined_at,
+          left_at,
+          meditation_events!inner (
+            duration
+          )
+        `)
+        .not('left_at', 'is', null); // Sessions that have been completed
+
+      if (completedError) {
+        console.error('Error fetching completed sessions:', completedError);
+      }
+
+      // Calculate total sessions and minutes
+      const totalSessions = completedSessions?.length || 0;
+      const globalMinutes = (completedSessions as CompletedSession[] | null)?.reduce((acc, session) => {
+        if (session.joined_at && session.left_at && session.meditation_events?.duration) {
+          const joinedAt = new Date(session.joined_at);
+          const leftAt = new Date(session.left_at);
+          const actualDuration = Math.floor((leftAt.getTime() - joinedAt.getTime()) / 60000); // Convert to minutes
+          return acc + Math.min(actualDuration, session.meditation_events.duration);
+        }
+        return acc;
+      }, 0) || 0;
+
+      // Get tradition distribution from user_profiles
+      const { data: traditionsData, error: traditionsError } = await supabase
+        .from('user_profiles')
+        .select('preferred_tradition')
+        .not('preferred_tradition', 'is', null);
+
+      if (traditionsError) {
+        console.error('Error fetching traditions:', traditionsError);
+      }
+
+      // Count traditions
+      const traditionCounts: { [key: string]: number } = {};
+      traditionsData?.forEach(profile => {
+        if (profile.preferred_tradition) {
+          traditionCounts[profile.preferred_tradition] = (traditionCounts[profile.preferred_tradition] || 0) + 1;
+        }
       });
-      setTraditions([
-        { tradition: 'secular', count: 523 },
-        { tradition: 'buddhist', count: 312 },
-        { tradition: 'christian', count: 205 },
-        { tradition: 'hindu', count: 98 },
-        { tradition: 'islamic', count: 58 },
-      ]);
-      setGlobalActivity(generateMockActivityData());
+
+      // Convert to array and sort by count
+      const traditionArray = Object.entries(traditionCounts)
+        .map(([tradition, count]) => ({ tradition, count }))
+        .sort((a, b) => b.count - a.count);
+
+      // Get hourly activity data for the last 24 hours
+      const twentyFourHoursAgo = new Date();
+      twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+
+      const { data: activityData, error: activityError } = await supabase
+        .from('meditation_participants')
+        .select('joined_at')
+        .gte('joined_at', twentyFourHoursAgo.toISOString())
+        .eq('active', true)
+        .is('left_at', null);
+
+      if (activityError) {
+        console.error('Error fetching activity data:', activityError);
+      }
+
+      // Process activity data into hourly buckets
+      const activityByHour: { [hour: string]: number } = {};
+      const now = new Date();
+      for (let i = 23; i >= 0; i--) {
+        const hour = new Date(now);
+        hour.setHours(now.getHours() - i);
+        const hourKey = hour.toLocaleTimeString([], { hour: '2-digit' });
+        activityByHour[hourKey] = 0;
+      }
+
+      activityData?.forEach(activity => {
+        const activityHour = new Date(activity.joined_at)
+          .toLocaleTimeString([], { hour: '2-digit' });
+        activityByHour[activityHour] = (activityByHour[activityHour] || 0) + 1;
+      });
+
+      const hourlyActivity = Object.entries(activityByHour)
+        .map(([time, count]) => ({ time, count }));
+
+      setStats({
+        total_users: users?.length || 0,
+        active_now: activeUsers?.length || 0,
+        total_sessions: totalSessions,
+        global_minutes: globalMinutes,
+      });
+      setTraditions(traditionArray);
+      setGlobalActivity(hourlyActivity);
+
+      console.log('Community Stats:', {
+        users: users?.length,
+        activeUsers: activeUsers?.length,
+        totalSessions,
+        globalMinutes,
+        traditions: traditionArray,
+      });
     } catch (error) {
       console.error('Error in fetchCommunityData:', error);
     } finally {
