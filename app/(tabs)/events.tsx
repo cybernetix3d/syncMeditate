@@ -271,7 +271,20 @@ export default function EventsScreen() {
   };
   
   const handleJoinEvent = (event: MeditationEvent) => {
-    router.push(`/meditation/sync?id=${event.id}&duration=${event.duration}`);
+    if (isHappeningNow(event.start_time, event.duration)) {
+      // If event is happening now, go directly to sync
+      router.push(`/meditation/sync?id=${event.id}&duration=${event.duration}`);
+    } else {
+      // Otherwise go to details page
+      router.push(`/meditation/${event.id}`);
+    }
+  };
+
+  const isHappeningNow = (startTime: string, duration: number): boolean => {
+    const now = new Date();
+    const eventStart = new Date(startTime);
+    const eventEnd = new Date(eventStart.getTime() + duration * 60000);
+    return now >= eventStart && now <= eventEnd;
   };
   
   const handleCreateEvent = () => {

@@ -65,8 +65,11 @@ const MeditationCard: React.FC<{
   };
 
   const navigateToMeditation = () => {
-    if (canJoin()) {
+    if (canJoin() && joinable) {
       router.push(`/meditation/sync?id=${eventId}&duration=${duration}`);
+    } else {
+      // Navigate to details page instead
+      router.push(`/meditation/${eventId}`);
     }
   };
 
@@ -78,8 +81,7 @@ const MeditationCard: React.FC<{
     <TouchableOpacity
       style={[styles.meditationCard, !joinable && styles.disabledCard]}
       onPress={navigateToMeditation}
-      activeOpacity={joinable ? 0.7 : 1}
-      disabled={!joinable}
+      activeOpacity={0.7}
     >
       <View style={styles.cardHeader}>
         <View style={[styles.traditionIcon, { backgroundColor: traditionObj.color }]}>
