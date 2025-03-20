@@ -54,11 +54,11 @@ export default function ProfileSettingsScreen() {
         input.accept = 'image/*';
         
         // Create a promise to handle the file selection
-        const fileSelected = new Promise((resolve) => {
-          input.onchange = (e) => {
+        const fileSelected = new Promise<File>((resolve) => {
+          input.onchange = async (e) => {
             const file = (e.target as HTMLInputElement).files?.[0];
             if (file) {
-              resolve(URL.createObjectURL(file));
+              resolve(file); // Pass the actual File object
             }
           };
         });
@@ -66,11 +66,9 @@ export default function ProfileSettingsScreen() {
         // Trigger file selection dialog
         input.click();
         
-        // Wait for file selection
-        const imageUri = await fileSelected;
-        if (imageUri) {
-          await uploadAvatar(imageUri as string);
-        }
+        // Wait for file selection and upload
+        const file = await fileSelected;
+        await uploadAvatar(file);
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         
@@ -96,42 +94,39 @@ export default function ProfileSettingsScreen() {
     }
   };
 
-  const uploadAvatar = async (uri: string) => {
+  const uploadAvatar = async (source: string | File) => {
     try {
       setUploading(true);
-      console.log('Starting upload process...', { uri });
+      console.log('Starting upload process...', { source });
 
       if (!isUserProfile(user)) {
         throw new Error('No valid user profile');
       }
 
       let blob: Blob;
-      if (Platform.OS === 'web') {
-        // For web, we need to fetch the file differently
-        const response = await fetch(uri);
-        const blobData = await response.blob();
-        // Create a new blob with proper mime type
-        blob = new Blob([blobData], { type: 'image/jpeg' });
-        console.log('Web blob created:', { size: blob.size, type: blob.type });
+      if (source instanceof File) {
+        // For web, use the File object directly
+        blob = source;
       } else {
-        // For native platforms
-        const response = await fetch(uri);
+        // For native platforms, fetch the blob
+        const response = await fetch(source);
         blob = await response.blob();
       }
 
       console.log('Blob created, size:', blob.size, 'bytes');
 
-      // Generate file name
-      const fileName = `${user.id}-${Date.now()}.jpg`;
+      // Generate file name with timestamp and random string for uniqueness
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const fileName = `${user.id}-${timestamp}-${random}.jpg`;
       console.log('Uploading as:', fileName);
 
-      // Upload directly without checking bucket (bucket check was causing issues)
-      console.log('Attempting upload...');
+      // Upload to Supabase storage
       const { error: uploadError, data: uploadData } = await supabase.storage
         .from('avatars')
         .upload(fileName, blob, {
           contentType: 'image/jpeg',
-          upsert: true
+          upsert: false // Don't overwrite existing files
         });
 
       if (uploadError) {

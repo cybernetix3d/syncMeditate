@@ -17,6 +17,7 @@ import { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
 import Button from '@/src/components/common/Button';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
+import { useFocusEffect } from '@react-navigation/native';
 
 // Event type definition
 interface MeditationEvent {
@@ -189,17 +190,27 @@ export default function EventsScreen() {
     try {
       setLoading(true);
       const now = new Date();
+      
+      // Get all future events and recent events
       const { data, error } = await supabase
         .from('meditation_events')
         .select('*')
-        .gte('start_time', new Date(now.getTime() - 60 * 60 * 1000).toISOString())
         .order('start_time', { ascending: true });
+
       if (error) {
         console.error('Error fetching events:', error);
         return;
       }
+
+      // Only keep events that haven't ended yet
+      const activeEvents = (data || []).filter(event => {
+        const startTime = new Date(event.start_time);
+        const endTime = new Date(startTime.getTime() + event.duration * 60000); // Convert duration from minutes to milliseconds
+        return endTime > now; // Only show events that haven't ended yet
+      });
+
       const eventsWithCounts = await Promise.all(
-        (data || []).map(async (event) => {
+        activeEvents.map(async (event) => {
           const { count, error: countError } = await supabase
             .from('meditation_participants')
             .select('*', { count: 'exact', head: true })
@@ -212,6 +223,7 @@ export default function EventsScreen() {
           return { ...event, participant_count: count || 0 };
         })
       );
+      
       setEvents(eventsWithCounts);
       groupEventsByDate(eventsWithCounts);
     } catch (error) {
@@ -240,6 +252,15 @@ export default function EventsScreen() {
     setEventSections(sections);
   };
   
+  // Refresh events when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('Events screen focused, refreshing events');
+      fetchEvents();
+    }, [])
+  );
+  
+  // Initial load
   useEffect(() => {
     fetchEvents();
   }, []);
@@ -265,7 +286,7 @@ export default function EventsScreen() {
       );
       return;
     }
-    Alert.alert('Coming Soon', 'Event creation will be available in a future update.');
+    router.push('/events/create');
   };
   
   const renderEmptyState = () => (
@@ -503,8 +524,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
   },
-  signInButton: {
+  createButton: {
     marginTop: 15,
+    width: '100%',
   },
   quotesContainer: {
     paddingHorizontal: 20,

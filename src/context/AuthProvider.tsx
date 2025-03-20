@@ -199,7 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           try {
             const { data: profile, error: profileError } = await supabase
               .from('users')
-              .select('id, email, display_name, privacy_settings, faith_preferences')
+              .select('id, email, display_name, avatar_url, privacy_settings, faith_preferences, created_at')
               .eq('id', session.user.id)
               .single();
 
@@ -218,6 +218,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 id: profile.id,
                 email: profile.email,
                 display_name: profile.display_name,
+                avatar_url: profile.avatar_url,
+                created_at: profile.created_at,
                 privacy_settings: profile.privacy_settings,
                 faith_preferences: profile.faith_preferences
               });
@@ -252,7 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             try {
               const { data: profile, error: profileError } = await supabase
                 .from('users')
-                .select('id, email, display_name, privacy_settings, faith_preferences')
+                .select('id, email, display_name, avatar_url, privacy_settings, faith_preferences, created_at')
                 .eq('id', session.user.id)
                 .single();
 
@@ -265,6 +267,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   id: profile.id,
                   email: profile.email,
                   display_name: profile.display_name,
+                  avatar_url: profile.avatar_url,
+                  created_at: profile.created_at,
                   privacy_settings: profile.privacy_settings,
                   faith_preferences: profile.faith_preferences
                 });
