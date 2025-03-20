@@ -1,5 +1,5 @@
 import React from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { Ionicons } from '@expo/vector-icons';
 import { Link, Tabs } from 'expo-router';
 import { Pressable } from 'react-native';
 
@@ -7,12 +7,11 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
 function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
+  name: React.ComponentProps<typeof Ionicons>['name'];
   color: string;
 }) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
+  return <Ionicons size={24} style={{ marginBottom: -3 }} {...props} />;
 }
 
 export default function TabLayout() {
@@ -21,25 +20,36 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
+        tabBarActiveTintColor: '#1A2151',
+        tabBarInactiveTintColor: '#888888',
         headerShown: useClientOnlyValue(false, true),
+        tabBarStyle: {
+          backgroundColor: '#FFFFFF',
+          borderTopColor: '#E0E0E0',
+          elevation: 0,
+          shadowOpacity: 0.1,
+          paddingTop: 5,
+          height: 60
+        }
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Tab One',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
+          title: 'Meditate',
+          tabBarIcon: ({ color }) => <TabBarIcon name="leaf" color={color} />,
+          headerTitleStyle: {
+            fontWeight: '600',
+            color: '#1A2151'
+          },
           headerRight: () => (
-            <Link href="/modal" asChild>
+            <Link href="/meditation/sync?id=quick&duration=10" asChild>
               <Pressable>
                 {({ pressed }) => (
-                  <FontAwesome
-                    name="info-circle"
-                    size={25}
-                    color={Colors[colorScheme ?? 'light'].text}
-                    style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
+                  <Ionicons
+                    name="play-circle"
+                    size={28}
+                    color="#1A2151"
+                    style={{ marginRight: 15, opacity: pressed ? 0.7 : 1 }}
                   />
                 )}
               </Pressable>
@@ -48,10 +58,36 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="two"
+        name="events"
         options={{
-          title: 'Tab Two',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
+          title: 'Events',
+          tabBarIcon: ({ color }) => <TabBarIcon name="calendar" color={color} />,
+          headerTitleStyle: {
+            fontWeight: '600',
+            color: '#1A2151'
+          }
+        }}
+      />
+      <Tabs.Screen
+        name="community"
+        options={{
+          title: 'Community',
+          tabBarIcon: ({ color }) => <TabBarIcon name="people" color={color} />,
+          headerTitleStyle: {
+            fontWeight: '600',
+            color: '#1A2151'
+          }
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color }) => <TabBarIcon name="settings" color={color} />,
+          headerTitleStyle: {
+            fontWeight: '600',
+            color: '#1A2151'
+          }
         }}
       />
     </Tabs>
