@@ -16,7 +16,7 @@ import { supabase } from '@/src/api/supabase';
 import { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
 import Button from '@/src/components/common/Button';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
-import { useTheme } from '@/src/contexts/ThemeContext';
+import { useTheme } from '@/src/context/ThemeContext';
 
 // Event type definition
 interface MeditationEvent {

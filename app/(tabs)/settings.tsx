@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Switch } from 'react-native';
-import { useTheme } from '@/src/contexts/ThemeContext';
+import { useTheme } from '@/src/context/ThemeContext';
 
 export default function SettingsScreen() {
   const { isDark, toggleTheme, colors } = useTheme();

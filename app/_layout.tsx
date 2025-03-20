@@ -5,7 +5,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
-import { ThemeProvider, useTheme } from '@/src/contexts/ThemeContext';
+import { ThemeProvider, useTheme } from '@/src/context/ThemeContext';
 
 export { ErrorBoundary } from 'expo-router';
 

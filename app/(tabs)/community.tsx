@@ -16,7 +16,7 @@ import { supabase } from '@/src/api/supabase';
 import Button from '@/src/components/common/Button';
 import { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
-import { useTheme } from '@/src/contexts/ThemeContext';
+import { useTheme } from '@/src/context/ThemeContext';
 
 interface CommunityStats {
   total_users: number;

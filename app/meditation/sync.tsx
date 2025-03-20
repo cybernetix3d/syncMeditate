@@ -21,7 +21,7 @@ import PulseVisualizer from '../../src/components/meditation/PulseVisualizer';
 import Button from '../../src/components/common/Button';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/src/constants/Styles';
-import { useTheme } from '@/src/contexts/ThemeContext';
+import { useTheme } from '@/src/context/ThemeContext';
 
 export default function SyncMeditationScreen() {
   const { id: eventId, duration: durationParam = '10' } = useLocalSearchParams();

@@ -16,7 +16,7 @@ import { supabase } from '@/src/api/supabase';
 import { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
 import Button from '@/src/components/common/Button';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
-import { useTheme } from '@/src/contexts/ThemeContext';
+import { useTheme } from '@/src/context/ThemeContext';
 
 
 const MeditationCard: React.FC<{
@@ -43,7 +43,7 @@ const MeditationCard: React.FC<{
     >
       <View style={styles.cardHeader}>
         <View style={[styles.traditionIcon, { backgroundColor: traditionObj.color }]}>
-          <Ionicons name={traditionObj.icon as any} size={20} color={COLORS.white} />
+          <Ionicons name={traditionObj.icon as any} size={20} color={COLORS.pastel2} />
         </View>
         <View style={styles.cardTitleContainer}>
           <Text style={styles.cardTitle}>{title}</Text>
@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   quickStartItem: {
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.pastel2,
     borderRadius: 12,
     padding: 15,
     alignItems: 'center',
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   quickStartIconContainer: {
-    backgroundColor: COLORS.secondaryOpacity, // Define this in your style sheet
+    backgroundColor: COLORS.pastel3, // Define this in your style sheet
     width: 50,
     height: 50,
     borderRadius: 25,
@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   meditationCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.pastel2,
     borderRadius: 12,
     marginBottom: 15,
     shadowColor: COLORS.darkGray,
@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginLeft: 'auto',
-    backgroundColor: COLORS.secondaryOpacity, // Define this opacity version
+    backgroundColor: COLORS.pastel3, // Define this opacity version
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 15,
@@ -438,7 +438,7 @@ const styles = StyleSheet.create({
   emptyStateContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.pastel2,
     borderRadius: 12,
     padding: 30,
     marginBottom: 15,
@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   quoteCard: {
-    backgroundColor: COLORS.secondaryOpacityVeryLight, // Define this very light opacity version
+    backgroundColor: COLORS.pastel3, // Define this very light opacity version
     borderRadius: 12,
     padding: 20,
     borderLeftWidth: 4,

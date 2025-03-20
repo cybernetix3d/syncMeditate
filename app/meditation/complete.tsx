@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import Button from '../../src/components/common/Button';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/src/constants/Styles';
-import { useTheme } from '@/src/contexts/ThemeContext';
+import { useTheme } from '@/src/context/ThemeContext';
 
 export default function MeditationCompleteScreen() {
   const { duration } = useLocalSearchParams();
