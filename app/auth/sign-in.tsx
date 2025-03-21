@@ -56,12 +56,25 @@ export default function SignInScreen() {
   const handleAnonymousSignIn = async () => {
     try {
       setLoading(true);
-      const { error } = await signInAnonymously();
+      console.log('Starting anonymous sign-in process...');
+      
+      const { user, error } = await signInAnonymously();
       
       if (error) {
-        Alert.alert('Anonymous Sign In Error', error.message);
+        console.error('Anonymous sign-in error in component:', error);
+        Alert.alert('Anonymous Sign In Error', error.message || 'Failed to sign in anonymously');
+        return;
+      }
+      
+      console.log('Anonymous sign-in successful in component, user:', user?.id);
+      
+      // Fallback navigation if the auth provider doesn't handle it
+      if (user) {
+        console.log('Navigating to home screen from sign-in component');
+        router.replace('/');
       }
     } catch (error: any) {
+      console.error('Unexpected error in anonymous sign-in:', error);
       Alert.alert('Error', error.message || 'An unexpected error occurred');
     } finally {
       setLoading(false);

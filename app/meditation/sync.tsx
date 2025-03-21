@@ -126,50 +126,104 @@ export default function SyncMeditationScreen() {
 
   const handleComplete = () => {
     setMeditationState('COMPLETED');
-    if (isUserProfile(user) && !isQuickMeditation && !isGlobalMeditation) {
+    
+    const actualDuration = durationSeconds - remainingTime;
+    
+    // Record completion for any authenticated user, including quick meditations
+    if (isUserProfile(user)) {
       const saveCompletion = async () => {
         try {
-          // First update the meditation_participants record
-          const { data: participantData } = await supabase
-            .from('meditation_participants')
-            .select('id')
-            .eq('event_id', eventId)
-            .eq('user_id', user.id)
-            .eq('active', true)
-            .is('left_at', null)
-            .single();
-
-          if (participantData) {
-            await supabase
+          // For scheduled events, update participant record
+          if (!isQuickMeditation && !isGlobalMeditation) {
+            const { data: participantData } = await supabase
               .from('meditation_participants')
-              .update({
-                active: false,
-                left_at: new Date().toISOString()
-              })
-              .eq('id', participantData.id);
+              .select('id')
+              .eq('event_id', eventId)
+              .eq('user_id', user.id)
+              .eq('active', true)
+              .is('left_at', null)
+              .single();
+
+            if (participantData) {
+              await supabase
+                .from('meditation_participants')
+                .update({
+                  active: false,
+                  left_at: new Date().toISOString()
+                })
+                .eq('id', participantData.id);
+            }
           }
 
-          // Then save to meditation_completions
-          await supabase.from('meditation_completions').insert([
-            {
-              user_id: user.id,
-              event_id: eventId,
-              duration: durationSeconds - remainingTime,
-              completed: true,
-            },
-          ]);
+          // Save to meditation_completions for ALL meditation types
+          const completionData = {
+            user_id: user.id,
+            event_id: isQuickMeditation ? null : isGlobalMeditation ? 'global' : eventId,
+            duration: actualDuration,
+            completed: true,
+            // Add a type field to distinguish quick meditations
+            meditation_type: isQuickMeditation ? 'quick' : isGlobalMeditation ? 'global' : 'scheduled'
+          };
+          
+          console.log('Saving meditation completion:', completionData);
+          
+          // Try first with the meditation_completions table
+          const { data, error: insertError } = await supabase.from('meditation_completions').insert([
+            completionData
+          ]).select();
+          
+          if (insertError) {
+            console.error('Error inserting meditation completion:', insertError);
+            
+            // If the error is related to the table not existing, try the user_meditation_history table instead
+            try {
+              // Also save to user_meditation_history for better compatibility
+              await supabase.from('user_meditation_history').insert([{
+                user_id: user.id,
+                event_id: isQuickMeditation ? null : isGlobalMeditation ? null : eventId,
+                duration: actualDuration,
+                tradition: null, // Could get this from user preferences if needed
+                date: new Date().toISOString()
+              }]);
+              console.log('Saved to user_meditation_history as fallback');
+            } catch (historyError) {
+              console.error('Error saving to user_meditation_history:', historyError);
+            }
+          } else {
+            console.log('Meditation completion saved successfully:', data);
+            
+            // Additionally save to user_meditation_history for compatibility
+            try {
+              await supabase.from('user_meditation_history').insert([{
+                user_id: user.id,
+                event_id: isQuickMeditation ? null : isGlobalMeditation ? null : eventId,
+                duration: actualDuration,
+                tradition: null, // Could get this from user preferences if needed
+                date: new Date().toISOString()
+              }]);
+              console.log('Also saved to user_meditation_history for compatibility');
+            } catch (historyError) {
+              console.error('Error saving to user_meditation_history:', historyError);
+            }
+          }
 
           setTimeout(() => {
             router.push({
               pathname: '/meditation/complete',
-              params: { duration: (durationSeconds - remainingTime).toString() },
+              params: { 
+                duration: actualDuration.toString(),
+                type: isQuickMeditation ? 'quick' : isGlobalMeditation ? 'global' : 'scheduled' 
+              },
             });
           }, 2000);
         } catch (error: any) {
           console.error('Error recording meditation completion:', error);
           router.push({
             pathname: '/meditation/complete',
-            params: { duration: (durationSeconds - remainingTime).toString() },
+            params: { 
+              duration: actualDuration.toString(),
+              type: isQuickMeditation ? 'quick' : isGlobalMeditation ? 'global' : 'scheduled' 
+            },
           });
         }
       };
@@ -178,7 +232,7 @@ export default function SyncMeditationScreen() {
       setTimeout(() => {
         router.push({
           pathname: '/meditation/complete',
-          params: { duration: (durationSeconds - remainingTime).toString() },
+          params: { duration: actualDuration.toString() },
         });
       }, 2000);
     }

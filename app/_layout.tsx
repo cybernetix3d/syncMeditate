@@ -125,6 +125,7 @@ function RootLayoutNav() {
           <Stack.Screen name="auth" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="meditation" />
+          <Stack.Screen name="events" /> 
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack>
       </AuthenticationGuard>

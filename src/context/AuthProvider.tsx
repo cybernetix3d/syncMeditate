@@ -460,42 +460,111 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Sign in anonymously
   const signInAnonymously = async () => {
     try {
-      // Generate a random email and password
-      const randomEmail = `guest_${Date.now()}@anonymous.user`;
-      const randomPassword = `${Math.random().toString(36).slice(-8)}${Math.random().toString(36).slice(-8)}`;
+      console.log('Using anonymous auth...');
       
-      const { data, error } = await supabase.auth.signUp({
-        email: randomEmail,
-        password: randomPassword
-      });
-
-      if (!error && data.user) {
-        // Create anonymous user profile
-        const { error: profileError } = await supabase
-          .from('users')
-          .insert([
-            {
-              id: data.user.id,
-              privacy_settings: {
-                locationSharingLevel: 'none',
-                useAnonymousId: true,
-                shareTradition: false
-              },
-              created_at: new Date().toISOString()
-            }
-          ]);
-
-        if (profileError) {
-          console.error('Error creating anonymous user profile:', profileError);
-          return { error: profileError };
+      // Method 1: Try using Supabase's native anonymous auth
+      try {
+        console.log('Attempting native anonymous auth...');
+        const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
+        
+        if (!anonError && anonData?.user) {
+          console.log('Native anonymous auth successful');
+          
+          // Create or get user profile
+          await handleAnonymousProfile(anonData.user.id);
+          
+          return { user: anonData.user, error: null };
+        } else {
+          console.log('Native anonymous auth failed, trying fallback...');
         }
+      } catch (e) {
+        console.log('Native anonymous auth error, trying fallback...', e);
       }
-
-      return { user: data.user, error };
+      
+      // Method 2: Try using shared anonymous credentials
+      console.log('Attempting shared anonymous credentials...');
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: 'anonymous@example.com',
+        password: 'anonymous'
+      });
+      
+      if (error) {
+        console.error('Anonymous sign in error:', error);
+        
+        // Method 3: Create a temporary guest account (last resort)
+        console.log('Trying temporary guest account creation...');
+        const tempEmail = `guest_${Date.now()}@temporary.com`;
+        const tempPassword = `Guest${Math.random().toString(36).slice(2)}!`;
+        
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: tempEmail,
+          password: tempPassword,
+          options: {
+            data: { is_guest: true }
+          }
+        });
+        
+        if (signUpError || !signUpData?.user) {
+          console.error('All anonymous auth methods failed');
+          return { error: signUpError || new Error('Failed to create guest account') };
+        }
+        
+        // Create profile for the temporary account
+        await handleAnonymousProfile(signUpData.user.id);
+        
+        return { user: signUpData.user, error: null };
+      }
+      
+      // Successfully logged in with shared anonymous credentials
+      if (data?.user) {
+        await handleAnonymousProfile(data.user.id);
+      }
+      
+      return { user: data?.user, error: null };
     } catch (error) {
-      console.error('Error signing in anonymously:', error);
+      console.error('Error in anonymous sign in:', error);
       return { error };
     }
+  };
+
+  // Helper function to create anonymous user profile
+  const handleAnonymousProfile = async (userId: string) => {
+    // Create or get user profile
+    console.log('Creating anonymous user profile for:', userId);
+    const { error: profileError } = await supabase
+      .from('users')
+      .upsert({
+        id: userId,
+        display_name: 'Guest User',
+        privacy_settings: {
+          locationSharingLevel: 'none',
+          useAnonymousId: true,
+          shareTradition: false
+        },
+        created_at: new Date().toISOString()
+      });
+      
+    if (profileError) {
+      console.error('Error creating anonymous profile:', profileError);
+      // Continue anyway since auth was successful
+    } else {
+      console.log('Anonymous profile created successfully');
+    }
+    
+    // Update local state
+    setUser({
+      id: userId,
+      display_name: 'Guest User',
+      privacy_settings: {
+        locationSharingLevel: 'none',
+        useAnonymousId: true,
+        shareTradition: false
+      }
+    });
+    
+    // Navigate to home screen
+    console.log('Redirecting to home screen...');
+    router.replace('/');
   };
 
   // Sign out

@@ -299,9 +299,19 @@ export default function EventsScreen() {
       );
       return;
     }
-    router.push('/events/create');
+    
+    console.log('Attempting to navigate to create event screen');
+    // Simple direct navigation
+    try {
+      router.push({
+        pathname: 'events/create'
+      });
+    } catch (error) {
+      console.error('Navigation error:', error);
+      Alert.alert('Navigation Error', 'Could not navigate to create event page');
+    }
   };
-  
+
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
       <Ionicons name="calendar-outline" size={60} color={COLORS.lightGray} />

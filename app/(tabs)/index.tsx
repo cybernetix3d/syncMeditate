@@ -161,12 +161,27 @@ export default function HomeScreen() {
     completed_at: string;
     duration: number;
     completed: boolean;
+    meditation_type?: 'quick' | 'global' | 'scheduled' | 'user_history';
     meditation_events: (MeditationEvent & {
       meditation_participants?: Array<{
         id: string;
         active: boolean;
       }>;
     }) | null;
+    notes?: string | null;
+    tradition?: string | null;
+  }
+  
+  interface MeditationHistory {
+    id: string;
+    user_id: string;
+    event_id: string | null;
+    date: string;
+    duration: number;
+    tradition: string | null;
+    notes: string | null;
+    mood_before?: number;
+    mood_after?: number;
   }
   
   const [globalEvents, setGlobalEvents] = useState<MeditationEvent[]>([]);
@@ -207,11 +222,11 @@ export default function HomeScreen() {
 
       if (isUserProfile(user)) {
         // Get completed meditations with full event details
-        const { data: completionsData, error: completionsError } = await supabase
+        const { data: completionsWithEvents, error: completionsWithEventsError } = await supabase
           .from('meditation_completions')
           .select(`
             *,
-            meditation_events!inner (
+            meditation_events (
               *,
               meditation_participants (
                 id,
@@ -221,22 +236,83 @@ export default function HomeScreen() {
           `)
           .eq('user_id', user.id)
           .eq('completed', true)
+          .not('event_id', 'is', null)
           .order('completed_at', { ascending: false })
           .limit(5);
           
-        if (completionsError) {
-          console.error('Error fetching recent completions:', completionsError);
-        } else {
-          // Process the completions to include participant count
-          const processedCompletions = (completionsData || []).map((completion: MeditationCompletion) => ({
-            ...completion,
-            meditation_events: completion.meditation_events ? {
-              ...completion.meditation_events,
-              participant_count: completion.meditation_events.meditation_participants?.filter(p => p.active)?.length || 0
-            } : null
-          }));
-          setRecentEvents(processedCompletions);
+        if (completionsWithEventsError) {
+          console.error('Error fetching recent completions with events:', completionsWithEventsError);
         }
+        
+        // Also get quick meditations (those without event_id)
+        const { data: quickMeditations, error: quickMeditationsError } = await supabase
+          .from('meditation_completions')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('completed', true)
+          .is('event_id', null)
+          .order('completed_at', { ascending: false })
+          .limit(5);
+          
+        if (quickMeditationsError) {
+          console.error('Error fetching quick meditations:', quickMeditationsError);
+        } else {
+          console.log('Quick meditations found:', quickMeditations?.length || 0);
+        }
+        
+        // Also get meditations from user_meditation_history
+        const { data: historyEntries, error: historyError } = await supabase
+          .from('user_meditation_history')
+          .select(`
+            id,
+            user_id,
+            event_id,
+            date,
+            duration,
+            tradition,
+            notes,
+            mood_before,
+            mood_after
+          `)
+          .eq('user_id', user.id)
+          .order('date', { ascending: false })
+          .limit(5);
+          
+        if (historyError) {
+          console.error('Error fetching meditation history:', historyError);
+        } else {
+          console.log('Meditation history entries found:', historyEntries?.length || 0);
+        }
+        
+        // Convert history entries to the same format as completions
+        const historyCompletions = (historyEntries || []).map((history: MeditationHistory) => ({
+          id: history.id,
+          user_id: history.user_id,
+          event_id: history.event_id,
+          completed_at: history.date,
+          duration: history.duration,
+          completed: true,
+          meditation_type: 'user_history' as 'quick' | 'global' | 'scheduled' | 'user_history',
+          meditation_events: null,
+          notes: history.notes,
+          tradition: history.tradition
+        }));
+        
+        // Combine all types of completions
+        const allCompletions = [
+          ...(completionsWithEvents || []),
+          ...(quickMeditations || []).map(qm => ({
+            ...qm,
+            meditation_events: null
+          })),
+          ...historyCompletions
+        ].sort((a, b) => {
+          const dateA = new Date(a.completed_at || a.date || Date.now()).getTime();
+          const dateB = new Date(b.completed_at || b.date || Date.now()).getTime();
+          return dateB - dateA;
+        }).slice(0, 5);
+        
+        setRecentEvents(allCompletions);
       }
     } catch (error) {
       console.error('Error in fetchMeditationData:', error);
@@ -325,20 +401,40 @@ export default function HomeScreen() {
       {isUserProfile(user) && recentEvents.length > 0 ? (
         recentEvents.map((completion) => {
           const event = completion.meditation_events;
-          const completedDate = new Date(completion.completed_at);
+          const isQuickMeditation = !event && completion.meditation_type === 'quick';
+          const isHistoryEntry = completion.meditation_type === 'user_history';
+          const completedDate = new Date(completion.completed_at || Date.now());
           const durationMinutes = Math.floor(completion.duration / 60);
           const remainingSeconds = completion.duration % 60;
           const formattedDuration = `${durationMinutes}:${remainingSeconds.toString().padStart(2, '0')}`;
           
+          let iconName: any = "checkmark-circle";
+          let iconColor = COLORS.pastel2;
+          let backgroundColor = COLORS.secondary;
+          
+          if (isQuickMeditation) {
+            iconName = "flash";
+            iconColor = COLORS.primary;
+            backgroundColor = COLORS.pastel1;
+          } else if (isHistoryEntry) {
+            iconName = "book";
+            iconColor = COLORS.primary;
+            backgroundColor = COLORS.pastel3;
+          }
+          
           return (
             <View key={completion.id} style={styles.completedMeditationCard}>
               <View style={styles.cardHeader}>
-                <View style={[styles.traditionIcon, { backgroundColor: COLORS.secondary }]}>
-                  <Ionicons name="checkmark-circle" size={20} color={COLORS.pastel2} />
+                <View style={[styles.traditionIcon, { backgroundColor }]}>
+                  <Ionicons name={iconName} size={20} color={iconColor} />
                 </View>
                 <View style={styles.cardTitleContainer}>
                   <Text style={styles.cardTitle}>
-                    {event ? event.title : 'Quick Meditation'}
+                    {isQuickMeditation ? 
+                      `Quick ${durationMinutes}-Minute Meditation` : 
+                      isHistoryEntry ?
+                      `${durationMinutes}-Minute Meditation` :
+                      (event?.title || 'Meditation Session')}
                   </Text>
                   <Text style={styles.cardSubtitle}>
                     {completedDate.toLocaleString([], {
@@ -356,11 +452,29 @@ export default function HomeScreen() {
                   <Ionicons name="time-outline" size={16} color={COLORS.gray} />
                   <Text style={styles.cardDetailText}>{formattedDuration}</Text>
                 </View>
-                {event?.tradition && (
+                {(event?.tradition || completion.tradition) && (
                   <View style={styles.cardDetailItem}>
                     <Ionicons name="leaf-outline" size={16} color={COLORS.gray} />
                     <Text style={styles.cardDetailText}>
-                      {FAITH_TRADITIONS.find(t => t.id === event.tradition)?.name || 'Secular'}
+                      {FAITH_TRADITIONS.find(t => t.id === (event?.tradition || completion.tradition))?.name || 'Secular'}
+                    </Text>
+                  </View>
+                )}
+                {completion.meditation_type && (
+                  <View style={styles.cardDetailItem}>
+                    <Ionicons 
+                      name={completion.meditation_type === 'quick' ? "flash-outline" : 
+                            completion.meditation_type === 'global' ? "globe-outline" : 
+                            completion.meditation_type === 'user_history' ? "book-outline" :
+                            "calendar-outline"} 
+                      size={16} 
+                      color={COLORS.gray} 
+                    />
+                    <Text style={styles.cardDetailText}>
+                      {completion.meditation_type === 'quick' ? "Quick" : 
+                       completion.meditation_type === 'global' ? "Global" : 
+                       completion.meditation_type === 'user_history' ? "History" :
+                       "Scheduled"}
                     </Text>
                   </View>
                 )}
