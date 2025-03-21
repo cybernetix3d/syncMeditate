@@ -154,34 +154,28 @@ export const fixDatabaseSchema = async () => {
   try {
     console.log('Attempting to fix database schema...');
     
-    // Add meditation_type column to meditation_completions if it doesn't exist
-    const { error: columnError } = await supabase.rpc('exec_sql', {
-      query: `
-        ALTER TABLE meditation_completions 
-        ADD COLUMN IF NOT EXISTS meditation_type TEXT DEFAULT 'quick';
-        
-        -- Update existing records
-        UPDATE meditation_completions
-        SET meditation_type = CASE
-          WHEN event_id IS NULL THEN 'quick'
-          ELSE 'scheduled'
-        END
-        WHERE meditation_type IS NULL;
-      `
-    });
-
-    if (columnError) {
-      console.error('Error adding meditation_type column:', columnError);
-      throw columnError;
+    // First check if the meditation_completions table exists
+    const { data: tablesData, error: tablesError } = await supabase
+      .from('meditation_completions')
+      .select('id')
+      .limit(1);
+      
+    if (tablesError) {
+      console.error('Error checking meditation_completions table:', tablesError);
+      return { 
+        success: false, 
+        message: 'Cannot access meditation_completions table',
+        error: tablesError 
+      };
     }
-
-    console.log('Database schema fixed successfully');
-    return { success: true, message: 'Database schema updated successfully' };
+    
+    console.log('Database schema check completed');
+    return { success: true, message: 'Database schema appears to be working' };
   } catch (err) {
     console.error('Failed to fix database schema:', err);
     return { 
       success: false, 
-      message: 'Failed to update database schema',
+      message: 'Failed to check database schema',
       error: err 
     };
   }
@@ -190,35 +184,74 @@ export const fixDatabaseSchema = async () => {
 // Helper function to fix meditation permissions issues
 export const fixMeditationPermissions = async () => {
   try {
-    console.log('Attempting to fix meditation table permissions...');
+    console.log('Checking meditation table permissions...');
     
-    // Create RLS policy for anonymous users to insert
-    const { error: policyError } = await supabase.rpc('exec_sql', {
-      query: `
-        -- Enable anonymous inserts for meditation_completions
-        CREATE POLICY IF NOT EXISTS "Allow anonymous inserts" 
-        ON meditation_completions FOR INSERT 
-        WITH CHECK (true);
-        
-        -- Fix permissions for authenticated users
-        CREATE POLICY IF NOT EXISTS "Allow authenticated users" 
-        ON meditation_completions FOR ALL 
-        USING (auth.uid() = user_id);
-        
-        -- Enable RLS but make sure policies are in place first
-        ALTER TABLE meditation_completions ENABLE ROW LEVEL SECURITY;
-      `
-    });
-
-    if (policyError) {
-      console.error('Error fixing meditation permissions:', policyError);
-      return { success: false, error: policyError };
+    // First get the user session
+    const session = await supabase.auth.getSession();
+    const userId = session.data.session?.user?.id;
+    
+    if (!userId) {
+      console.log('No authenticated user found');
+      return { success: false, error: 'No authenticated user' };
     }
-
-    console.log('Permissions fixed successfully');
+    
+    // Get the structure of the user_meditation_history table
+    try {
+      console.log('Checking user_meditation_history table structure');
+      const { data: sample, error: sampleError } = await supabase
+        .from('user_meditation_history')
+        .select('*')
+        .limit(1);
+        
+      if (sampleError) {
+        console.error('Error checking table structure:', sampleError);
+      } else {
+        console.log('Table structure sample:', sample);
+      }
+    } catch (e) {
+      console.error('Error checking table structure:', e);
+    }
+    
+    // Try inserting a test record with minimal fields
+    const testId = `test-${Date.now()}`;
+    const testRecord = {
+      id: testId,
+      user_id: userId,
+      duration: 1,
+      date: new Date().toISOString()
+    };
+    
+    console.log('Testing insert with minimal fields:', testRecord);
+    
+    // Try inserting a test record
+    const { data: insertData, error: insertError } = await supabase
+      .from('user_meditation_history')
+      .insert(testRecord)
+      .select();
+      
+    if (insertError) {
+      console.error('Error testing insert permissions:', insertError);
+      return { success: false, error: insertError };
+    }
+    
+    console.log('Test record inserted successfully:', insertData);
+    
+    // Then delete it
+    const { error: deleteError } = await supabase
+      .from('user_meditation_history')
+      .delete()
+      .eq('id', testId);
+      
+    if (deleteError) {
+      console.error('Error testing delete permissions:', deleteError);
+    } else {
+      console.log('Test record deleted successfully');
+    }
+    
+    console.log('Permission check completed successfully');
     return { success: true };
   } catch (err) {
-    console.error('Failed to fix permissions:', err);
+    console.error('Failed to check permissions:', err);
     return { success: false, error: err };
   }
 };

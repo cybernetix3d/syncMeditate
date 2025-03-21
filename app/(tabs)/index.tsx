@@ -19,6 +19,65 @@ import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
 import { UserProfile } from '@/src/context/AuthProvider';
 
+interface MeditationEvent {
+  id: string;
+  title: string;
+  description: string | null;
+  start_time: string;
+  duration: number;
+  tradition: string | null;
+  created_by: string | null;
+  created_at: string;
+  is_global: boolean;
+  participant_count: number;
+  meditation_participants?: Array<{
+    id: string;
+    active: boolean;
+  }>;
+}
+
+interface MeditationCompletion {
+  id: string;
+  user_id: string;
+  event_id: string | null;
+  completed_at: string;
+  duration: number; // duration stored in seconds in user_meditation_history
+  completed: boolean;
+  meditation_type?: 'quick' | 'global' | 'scheduled' | 'user_history';
+  meditation_events: (MeditationEvent & {
+    meditation_participants?: Array<{
+      id: string;
+      active: boolean;
+    }>;
+  }) | null;
+  notes?: string | null;
+  tradition?: string | null;
+}
+
+interface MeditationHistory {
+  id: string;
+  user_id: string;
+  event_id: string | null;
+  date: string;
+  duration: number; // duration in seconds
+  tradition: string | null;
+  notes: string | null;
+  mood_before?: number;
+  mood_after?: number;
+}
+
+interface CommunityStats {
+  total_users: number;
+  active_now: number;
+  total_sessions: number;
+  global_minutes: number;
+}
+
+interface GlobalActivity {
+  time: string;
+  count: number;
+}
+
 const MeditationCard: React.FC<{
   title: string;
   subtitle: string;
@@ -41,7 +100,7 @@ const MeditationCard: React.FC<{
   };
 
   const canJoin = (): boolean => {
-    if (!startTime) return true; // Quick start meditations can always be joined
+    if (!startTime) return true;
     const now = new Date();
     const eventStart = new Date(startTime);
     return now >= eventStart;
@@ -55,20 +114,13 @@ const MeditationCard: React.FC<{
     if (diffMs < 0) return null;
     const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMins = Math.round((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    if (diffHrs > 24) {
-      return null;
-    } else if (diffHrs > 0) {
-      return `In ${diffHrs}h ${diffMins}m`;
-    } else {
-      return `In ${diffMins}m`;
-    }
+    return diffHrs > 0 ? `In ${diffHrs}h ${diffMins}m` : `In ${diffMins}m`;
   };
 
   const navigateToMeditation = () => {
-    if (canJoin() && joinable) {
+    if (canJoin()) {
       router.push(`/meditation/sync?id=${eventId}&duration=${duration}`);
     } else {
-      // Navigate to details page instead
       router.push(`/meditation/${eventId}`);
     }
   };
@@ -127,10 +179,8 @@ const MeditationCard: React.FC<{
   );
 };
 
-// Helper function to check if user is a UserProfile
-const isUserProfile = (user: boolean | UserProfile | null): user is UserProfile => {
-  return typeof user !== 'boolean' && user !== null && 'id' in user;
-};
+const isUserProfile = (user: boolean | UserProfile | null): user is UserProfile =>
+  typeof user !== 'boolean' && user !== null && 'id' in user;
 
 export default function HomeScreen() {
   const { user } = useAuth();
@@ -138,53 +188,6 @@ export default function HomeScreen() {
   const { colors } = useTheme();
   const { refresh } = useLocalSearchParams();
 
-  interface MeditationEvent {
-    id: string;
-    title: string;
-    description: string | null;
-    start_time: string;
-    duration: number;
-    tradition: string | null;
-    created_by: string | null;
-    created_at: string;
-    is_global: boolean;
-    participant_count: number;
-    meditation_participants?: Array<{
-      id: string;
-      active: boolean;
-    }>;
-  }
-  
-  interface MeditationCompletion {
-    id: string;
-    user_id: string;
-    event_id: string | null;
-    completed_at: string;
-    duration: number;
-    completed: boolean;
-    meditation_type?: 'quick' | 'global' | 'scheduled' | 'user_history';
-    meditation_events: (MeditationEvent & {
-      meditation_participants?: Array<{
-        id: string;
-        active: boolean;
-      }>;
-    }) | null;
-    notes?: string | null;
-    tradition?: string | null;
-  }
-  
-  interface MeditationHistory {
-    id: string;
-    user_id: string;
-    event_id: string | null;
-    date: string;
-    duration: number;
-    tradition: string | null;
-    notes: string | null;
-    mood_before?: number;
-    mood_after?: number;
-  }
-  
   const [globalEvents, setGlobalEvents] = useState<MeditationEvent[]>([]);
   const [recentEvents, setRecentEvents] = useState<MeditationCompletion[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -196,8 +199,8 @@ export default function HomeScreen() {
       console.log("FETCHING MEDITATION DATA", new Date().toISOString());
       setLoading(true);
       
+      // First, get user history from user_meditation_history (durations are in seconds)
       if (isUserProfile(user)) {
-        // First try a simple direct query to get raw history data
         const { data: rawHistory, error: rawHistoryError } = await supabase
           .from('user_meditation_history')
           .select('*')
@@ -209,14 +212,13 @@ export default function HomeScreen() {
           rawHistoryError);
         
         if (rawHistory && rawHistory.length > 0) {
-          // Convert these directly to the right format
           const historyCompletions = rawHistory.map((history: MeditationHistory) => {
             const completion: MeditationCompletion = {
               id: history.id,
               user_id: history.user_id,
               event_id: history.event_id,
               completed_at: history.date,
-              duration: history.duration,
+              duration: history.duration, // duration in seconds
               completed: true,
               meditation_type: 'user_history',
               meditation_events: null,
@@ -225,184 +227,45 @@ export default function HomeScreen() {
             };
             return completion;
           });
-          
-          // Just use history for now to debug
           setRecentEvents(historyCompletions.slice(0, 10));
-          setLoading(false);
-          setRefreshing(false);
-          return;
         }
       }
       
       const now = new Date();
-      
-      // Get all events with participant counts
-      const { data: eventsData, error: eventsError } = await supabase
-        .from('meditation_events')
-        .select(`
-          *,
-          meditation_participants (
-            id,
-            active
-          )
-        `)
-        .eq('is_global', true)
-        .gte('start_time', now.toISOString()) // Get events starting now or in the future
-        .order('start_time', { ascending: true })
-        .limit(5);
-        
-      if (eventsError) {
-        console.error('Error fetching global events:', eventsError);
-      } else {
-        // Process events and add participant counts
-        const activeEvents = (eventsData || []).map((event: MeditationEvent) => ({
-          ...event,
-          participant_count: event.meditation_participants?.filter(p => p.active)?.length || 0
-        }));
-        setGlobalEvents(activeEvents);
-      }
+// For global events, filter for events scheduled for today only.
+const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+const tomorrowStart = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
 
-      if (isUserProfile(user)) {
-        // Get completed meditations with full event details
-        const { data: completionsWithEvents, error: completionsWithEventsError } = await supabase
-          .from('meditation_completions')
-          .select(`
-            id,
-            user_id,
-            event_id,
-            completed_at,
-            duration,
-            completed,
-            meditation_events (
-              *,
-              meditation_participants (
-                id,
-                active
-              )
-            )
-          `)
-          .eq('user_id', user.id)
-          .eq('completed', true)
-          .not('event_id', 'is', null)
-          .order('completed_at', { ascending: false })
-          .limit(5);
-          
-        if (completionsWithEventsError) {
-          console.error('Error fetching recent completions with events:', completionsWithEventsError);
-        }
-        
-        // Also get quick meditations (those without event_id)
-        const { data: quickMeditations, error: quickMeditationsError } = await supabase
-          .from('meditation_completions')
-          .select('id, user_id, event_id, completed_at, duration, completed')
-          .eq('user_id', user.id)
-          .eq('completed', true)
-          .is('event_id', null)
-          .order('completed_at', { ascending: false })
-          .limit(5);
-          
-        if (quickMeditationsError) {
-          console.error('Error fetching quick sessions from meditation_completions:', quickMeditationsError);
-        } else {
-          console.log('Quick meditations found:', quickMeditations?.length || 0);
-        }
-        
-        // Also get meditations from user_meditation_history
-        const { data: historyEntries, error: historyError } = await supabase
-          .from('user_meditation_history')
-          .select(`
-            id,
-            user_id,
-            event_id,
-            date,
-            duration,
-            tradition,
-            notes,
-            mood_before,
-            mood_after
-          `)
-          .eq('user_id', user.id)
-          .order('date', { ascending: false })
-          .limit(5);
-          
-        if (historyError) {
-          console.error('Error fetching meditation history:', historyError);
-        } else {
-          console.log('Meditation history entries found:', historyEntries?.length || 0);
-        }
-        
-        // Convert history entries to the same format as completions
-        const historyCompletions = (historyEntries || []).map((history: MeditationHistory) => {
-          const completion: MeditationCompletion = {
-            id: history.id,
-            user_id: history.user_id,
-            event_id: history.event_id,
-            completed_at: history.date,
-            duration: history.duration,
-            completed: true,
-            meditation_type: 'user_history',
-            meditation_events: null,
-            notes: history.notes,
-            tradition: history.tradition
-          };
-          return completion;
-        });
-        
-        // Process quick meditations to add type
-        const processedQuickMeditations = (quickMeditations || []).map(qm => {
-          const completion: MeditationCompletion = {
-            ...qm,
-            meditation_events: null,
-            meditation_type: 'quick'
-          };
-          return completion;
-        });
-        
-        // Process scheduled meditations to add type
-        const processedScheduledMeditations = (completionsWithEvents || []).map(ce => {
-          // First check if meditation_events exists and is an object
-          const meditationEvents = ce.meditation_events && typeof ce.meditation_events === 'object' 
-            ? ce.meditation_events as unknown as (MeditationEvent & {
-                meditation_participants?: Array<{
-                  id: string;
-                  active: boolean;
-                }>;
-              }) 
-            : null;
-          
-          const isGlobal = meditationEvents && 'is_global' in meditationEvents && meditationEvents.is_global === true;
-          
-          const completion: MeditationCompletion = {
-            ...ce,
-            meditation_type: isGlobal ? 'global' : 'scheduled',
-            meditation_events: meditationEvents
-          };
-          return completion;
-        });
-        
-        // Combine all types of completions
-        const allCompletions: MeditationCompletion[] = [
-          ...processedScheduledMeditations,
-          ...processedQuickMeditations,
-          ...historyCompletions
-        ].sort((a, b) => {
-          const dateA = new Date(a.completed_at || Date.now()).getTime();
-          const dateB = new Date(b.completed_at || Date.now()).getTime();
-          return dateB - dateA;
-        }).slice(0, 10);
-        
-        // Log for debugging
-        console.log('Final combined meditations:', 
-          allCompletions.map(c => ({
-            id: c.id,
-            type: c.meditation_type,
-            date: c.completed_at,
-            duration: c.duration
-          }))
-        );
-        
-        setRecentEvents(allCompletions);
-      }
+const { data: eventsData, error: eventsError } = await supabase
+  .from('meditation_events')
+  .select(`
+    *,
+    meditation_participants (
+      id,
+      active
+    )
+  `)
+  .eq('is_global', true)
+  .gte('start_time', todayStart.toISOString())
+  .lt('start_time', tomorrowStart.toISOString())
+  .order('start_time', { ascending: true });
+
+if (eventsError) {
+  console.error('Error fetching global events:', eventsError);
+} else {
+  // Filter out events that have already ended.
+  const activeEvents = (eventsData || []).filter((event: MeditationEvent) => {
+    const eventStart = new Date(event.start_time);
+    // Calculate event end time (duration is in minutes)
+    const eventEnd = new Date(eventStart.getTime() + event.duration * 60000);
+    return eventEnd > now; // Only include events that haven't ended yet
+  }).map((event: MeditationEvent) => ({
+    ...event,
+    participant_count: event.meditation_participants?.filter(p => p.active)?.length || 0,
+  }));
+  setGlobalEvents(activeEvents);
+}
+      
     } catch (error) {
       console.error('Error in fetchMeditationData:', error);
     } finally {
@@ -417,7 +280,6 @@ export default function HomeScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
-    // Increment forceRefresh to trigger a re-fetch
     setForceRefresh(prev => prev + 1);
     fetchMeditationData();
   };
@@ -456,7 +318,7 @@ export default function HomeScreen() {
 
   const renderGlobalMeditationsSection = () => (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Global Meditations</Text>
+      <Text style={styles.sectionTitle}>Upcoming Global Meditations</Text>
       {globalEvents.length > 0 ? (
         globalEvents.map((event) => (
           <MeditationCard
@@ -474,8 +336,8 @@ export default function HomeScreen() {
       ) : (
         <View style={styles.emptyStateContainer}>
           <Ionicons name="globe" size={40} color={COLORS.lightGray} />
-          <Text style={styles.emptyStateText}>No Upcoming Global Meditations</Text>
-          <Text style={styles.emptyStateSubtext}>Check back later for new meditation sessions</Text>
+          <Text style={styles.emptyStateText}>No Global Meditations Today</Text>
+          <Text style={styles.emptyStateSubtext}>Check back later for new sessions</Text>
           <Link href="/events/create" asChild>
             <Button style={styles.createButton} size="small" onPress={() => {}}>
               Create Event
@@ -487,160 +349,177 @@ export default function HomeScreen() {
   );
 
   const renderRecentMeditationsSection = () => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Your Recent Meditations</Text>
-      {isUserProfile(user) && (
-        <>
-          {/* Debug info - show counts */}
-          <View style={{ marginBottom: 10, padding: 10, backgroundColor: colors.surface, borderRadius: 8 }}>
-            <Text style={{ color: colors.bodyText }}>History entries found: {recentEvents.length}</Text>
-            <Text style={{ color: colors.bodyText, marginVertical: 5 }}>
-              Types: {recentEvents.map(e => e.meditation_type || 'unknown').join(', ')}
-            </Text>
-            <TouchableOpacity 
-              onPress={() => {
-                console.log('Manual refresh clicked');
-                setForceRefresh(prev => prev + 1);
-              }}
-              style={{ 
-                backgroundColor: colors.primary, 
-                padding: 8, 
-                borderRadius: 4, 
-                alignItems: 'center',
-                marginTop: 5 
+    <ScrollView>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Your Recent Meditations</Text>
+        {isUserProfile(user) && (
+          <>
+            <View
+              style={{
+                marginBottom: 10,
+                padding: 10,
+                backgroundColor: colors.surface,
+                borderRadius: 8,
               }}
             >
-              <Text style={{ color: '#fff' }}>Force Refresh Data</Text>
-            </TouchableOpacity>
-          </View>
-          
-          {recentEvents.length > 0 ? (
-            recentEvents.map((completion) => {
-              const event = completion.meditation_events;
-              const meditationType = completion.meditation_type || (event ? (event.is_global ? 'global' : 'scheduled') : 'quick');
-              const isQuickMeditation = meditationType === 'quick';
-              const isHistoryEntry = meditationType === 'user_history';
-              const completedDate = new Date(completion.completed_at || Date.now());
-              
-              // Format duration based on whether it's in seconds or minutes
-              let durationMinutes = Math.round(completion.duration / 60);
-              let formattedDuration;
-              
-              // If duration is very small, it's likely already in minutes
-              if (completion.duration < 100 && isHistoryEntry) {
-                // This is likely already in minutes
-                durationMinutes = completion.duration;
-                formattedDuration = `${durationMinutes} min`;
-              } else {
-                // Duration is in seconds
-                durationMinutes = Math.floor(completion.duration / 60);
+              <Text style={{ color: colors.bodyText }}>
+                History entries found: {recentEvents.length}
+              </Text>
+              <Text style={{ color: colors.bodyText, marginVertical: 5 }}>
+                Types: {recentEvents.map((e) => e.meditation_type || 'unknown').join(', ')}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  console.log('Manual refresh clicked');
+                  setForceRefresh((prev) => prev + 1);
+                }}
+                style={{
+                  backgroundColor: colors.primary,
+                  padding: 8,
+                  borderRadius: 4,
+                  alignItems: 'center',
+                  marginTop: 5,
+                }}
+              >
+                <Text style={{ color: '#fff' }}>Force Refresh Data</Text>
+              </TouchableOpacity>
+            </View>
+  
+            {recentEvents.length > 0 ? (
+              recentEvents.map((completion) => {
+                const event = completion.meditation_events;
+                const meditationType =
+                  completion.meditation_type ||
+                  (event ? (event.is_global ? 'global' : 'scheduled') : 'quick');
+                const isQuickMeditation = meditationType === 'quick';
+                const isHistoryEntry = meditationType === 'user_history';
+                const completedDate = new Date(completion.completed_at || Date.now());
+  
+                // Always treat duration as seconds from user_meditation_history
+                const durationMinutes = Math.floor(completion.duration / 60);
                 const remainingSeconds = completion.duration % 60;
-                formattedDuration = remainingSeconds > 0 ? 
-                  `${durationMinutes}:${remainingSeconds.toString().padStart(2, '0')}` : 
-                  `${durationMinutes} min`;
-              }
-              
-              let iconName: any = "checkmark-circle";
-              let iconColor = COLORS.pastel2;
-              let backgroundColor = COLORS.secondary;
-              
-              if (isQuickMeditation) {
-                iconName = "flash";
-                iconColor = COLORS.primary;
-                backgroundColor = COLORS.pastel1;
-              } else if (isHistoryEntry) {
-                iconName = "book";
-                iconColor = COLORS.primary;
-                backgroundColor = COLORS.pastel3;
-              }
-              
-              return (
-                <View key={completion.id} style={styles.completedMeditationCard}>
-                  <View style={styles.cardHeader}>
-                    <View style={[styles.traditionIcon, { backgroundColor }]}>
-                      <Ionicons name={iconName} size={20} color={iconColor} />
-                    </View>
-                    <View style={styles.cardTitleContainer}>
-                      <Text style={styles.cardTitle}>
-                        {isQuickMeditation ? 
-                          `Quick ${formattedDuration} Meditation` : 
-                          isHistoryEntry ?
-                          `${formattedDuration} Meditation` :
-                          (event?.title || 'Meditation Session')}
-                      </Text>
-                      <Text style={styles.cardSubtitle}>
-                        {completedDate.toLocaleString([], {
-                          weekday: 'short',
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.cardFooter}>
-                    <View style={styles.cardDetailItem}>
-                      <Ionicons name="time-outline" size={16} color={COLORS.gray} />
-                      <Text style={styles.cardDetailText}>{formattedDuration}</Text>
-                    </View>
-                    {(event?.tradition || completion.tradition) && (
-                      <View style={styles.cardDetailItem}>
-                        <Ionicons name="leaf-outline" size={16} color={COLORS.gray} />
-                        <Text style={styles.cardDetailText}>
-                          {FAITH_TRADITIONS.find(t => t.id === (event?.tradition || completion.tradition))?.name || 'Secular'}
+                const formattedDuration =
+                  remainingSeconds > 0
+                    ? `${durationMinutes}:${remainingSeconds.toString().padStart(2, '0')}`
+                    : `${durationMinutes} min`;
+  
+                let iconName: any = 'checkmark-circle';
+                let iconColor = COLORS.pastel2;
+                let backgroundColor = COLORS.secondary;
+  
+                if (isQuickMeditation) {
+                  iconName = 'flash';
+                  iconColor = COLORS.primary;
+                  backgroundColor = COLORS.pastel1;
+                } else if (isHistoryEntry) {
+                  iconName = 'book';
+                  iconColor = COLORS.primary;
+                  backgroundColor = COLORS.pastel3;
+                }
+  
+                return (
+                  <View key={completion.id} style={styles.completedMeditationCard}>
+                    <View style={styles.cardHeader}>
+                      <View style={[styles.traditionIcon, { backgroundColor }]}>
+                        <Ionicons name={iconName} size={20} color={iconColor} />
+                      </View>
+                      <View style={styles.cardTitleContainer}>
+                        <Text style={styles.cardTitle}>
+                          {isQuickMeditation
+                            ? `Quick ${formattedDuration} Meditation`
+                            : isHistoryEntry
+                            ? `${formattedDuration} Meditation`
+                            : event?.title || 'Meditation Session'}
+                        </Text>
+                        <Text style={styles.cardSubtitle}>
+                          {completedDate.toLocaleString([], {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
                         </Text>
                       </View>
-                    )}
-                    <View style={styles.cardDetailItem}>
-                      <Ionicons 
-                        name={meditationType === 'quick' ? "flash-outline" : 
-                              meditationType === 'global' ? "globe-outline" : 
-                              meditationType === 'user_history' ? "book-outline" :
-                              "calendar-outline"} 
-                        size={16} 
-                        color={COLORS.gray} 
-                      />
-                      <Text style={styles.cardDetailText}>
-                        {meditationType === 'quick' ? "Quick" : 
-                         meditationType === 'global' ? "Global" : 
-                         meditationType === 'user_history' ? "History" :
-                         "Scheduled"}
-                      </Text>
                     </View>
-                    <View style={[styles.completedBadge]}>
-                      <Text style={styles.completedText}>Completed</Text>
-                      <Ionicons name="checkmark" size={14} color={COLORS.secondary} />
+                    <View style={styles.cardFooter}>
+                      <View style={styles.cardDetailItem}>
+                        <Ionicons name="time-outline" size={16} color={COLORS.gray} />
+                        <Text style={styles.cardDetailText}>{formattedDuration}</Text>
+                      </View>
+                      {(event?.tradition || completion.tradition) && (
+                        <View style={styles.cardDetailItem}>
+                          <Ionicons name="leaf-outline" size={16} color={COLORS.gray} />
+                          <Text style={styles.cardDetailText}>
+                            {FAITH_TRADITIONS.find(
+                              (t) => t.id === (event?.tradition || completion.tradition)
+                            )?.name || 'Secular'}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.cardDetailItem}>
+                        <Ionicons
+                          name={
+                            meditationType === 'quick'
+                              ? 'flash-outline'
+                              : meditationType === 'global'
+                              ? 'globe-outline'
+                              : meditationType === 'user_history'
+                              ? 'book-outline'
+                              : 'calendar-outline'
+                          }
+                          size={16}
+                          color={COLORS.gray}
+                        />
+                        <Text style={styles.cardDetailText}>
+                          {meditationType === 'quick'
+                            ? 'Quick'
+                            : meditationType === 'global'
+                            ? 'Global'
+                            : meditationType === 'user_history'
+                            ? 'History'
+                            : 'Scheduled'}
+                        </Text>
+                      </View>
+                      <View style={styles.cardDetailItem}>
+                        <View style={styles.completedBadge}>
+                          <Text style={styles.completedText}>Completed</Text>
+                          <Ionicons name="checkmark" size={14} color={COLORS.secondary} />
+                        </View>
+                      </View>
                     </View>
                   </View>
-                </View>
-              );
-            })
-          ) : (
-            <View style={styles.emptyStateContainer}>
-              <Ionicons name="time" size={40} color={COLORS.lightGray} />
-              <Text style={styles.emptyStateText}>You haven't meditated yet</Text>
-              <Text style={styles.emptyStateSubtext}>Start with a quick session above</Text>
-            </View>
-          )}
-        </>
-      )}
-      
-      {!isUserProfile(user) && (
-        <View style={styles.emptyStateContainer}>
-          <Ionicons name="time" size={40} color={COLORS.lightGray} />
-          <Text style={styles.emptyStateText}>Sign in to track your meditations</Text>
-          <Text style={styles.emptyStateSubtext}>Join the community to save your progress</Text>
-          <Link href="/auth/sign-in" asChild>
-            <Button style={styles.signInButton} size="small" onPress={() => {}}>
-              Sign In
-            </Button>
-          </Link>
-        </View>
-      )}
-    </View>
+                );
+              })
+            ) : (
+              <View style={styles.emptyStateContainer}>
+                <Ionicons name="time" size={40} color={COLORS.lightGray} />
+                <Text style={styles.emptyStateText}>You haven't meditated yet</Text>
+                <Text style={styles.emptyStateSubtext}>
+                  Start with a quick session above
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+        {!isUserProfile(user) && (
+          <View style={styles.emptyStateContainer}>
+            <Ionicons name="time" size={40} color={COLORS.lightGray} />
+            <Text style={styles.emptyStateText}>Sign in to track your meditations</Text>
+            <Text style={styles.emptyStateSubtext}>
+              Join the community to save your progress
+            </Text>
+            <Link href="/auth/sign-in" asChild>
+              <Button style={styles.signInButton} size="small" onPress={() => {}}>
+                Sign In
+              </Button>
+            </Link>
+          </View>
+        )}
+      </View>
+    </ScrollView>
   );
-
+  
   const renderWelcomeSection = () => (
     <View style={styles.header}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -757,7 +636,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   quickStartIconContainer: {
-    backgroundColor: COLORS.pastel3, // Define this in your style sheet
+    backgroundColor: COLORS.pastel3,
     width: 50,
     height: 50,
     borderRadius: 25,
@@ -827,7 +706,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginLeft: 'auto',
-    backgroundColor: COLORS.pastel3, // Define this opacity version
+    backgroundColor: COLORS.pastel3,
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 15,
@@ -866,7 +745,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   quoteCard: {
-    backgroundColor: COLORS.pastel3, // Define this very light opacity version
+    backgroundColor: COLORS.pastel3,
     borderRadius: 12,
     padding: 20,
     borderLeftWidth: 4,

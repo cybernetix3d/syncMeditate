@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { forwardRef } from 'react';
 import { 
   TouchableOpacity, 
   Text, 
@@ -25,7 +25,8 @@ interface ButtonProps {
   fullWidth?: boolean;
 }
 
-const Button: React.FC<ButtonProps> = ({
+// Use forwardRef to properly handle ref forwarding
+const Button = forwardRef<any, ButtonProps>(({
   children,
   onPress,
   variant = 'primary',
@@ -35,7 +36,7 @@ const Button: React.FC<ButtonProps> = ({
   style,
   textStyle,
   fullWidth = false,
-}) => {
+}, ref) => {
   const getButtonStyle = (): StyleProp<ViewStyle>[] => {
     let result: StyleProp<ViewStyle>[] = [baseStyles.button];
     switch (variant) {
@@ -107,6 +108,7 @@ const Button: React.FC<ButtonProps> = ({
 
   return (
     <TouchableOpacity
+      ref={ref}
       style={[...getButtonStyle(), style]}
       onPress={onPress}
       disabled={disabled || loading}
@@ -128,7 +130,7 @@ const Button: React.FC<ButtonProps> = ({
       )}
     </TouchableOpacity>
   );
-};
+});
 
 const baseStyles = StyleSheet.create({
   button: {

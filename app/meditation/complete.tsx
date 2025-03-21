@@ -65,38 +65,33 @@ export default function MeditationCompleteScreen() {
 
   const handleReturnHome = async () => {
     try {
-      // Fix permissions first
-      await fixMeditationPermissions();
-      console.log('Fixed permissions');
-      
-      // Fix database schema
-      const result = await supabase.rpc('exec_sql', {
-        query: `
-          ALTER TABLE meditation_completions 
-          ADD COLUMN IF NOT EXISTS meditation_type TEXT DEFAULT 'quick';
-        `
-      });
-      
-      console.log('Fixed database schema:', result);
-      
-      // Insert a test record to make sure something is in the database
-      if (user && typeof user !== 'boolean') {
+      // Only try to save a record if we're logged in
+      if (user && typeof user !== 'boolean' && user.id) {
+        console.log('Attempting to save meditation record to history table');
+        
+        const meditationRecord = {
+          user_id: user.id,
+          duration: Number(durationMinutes) || 1,
+          date: new Date().toISOString(),
+          notes: type ? `${type} meditation session` : 'Meditation session'
+        };
+        
+        console.log('Inserting record:', meditationRecord);
+        
         const { data, error } = await supabase
           .from('user_meditation_history')
-          .insert([
-            {
-              user_id: user.id,
-              duration: Number(durationSeconds) || 10,
-              date: new Date().toISOString(),
-              notes: 'Test meditation'
-            }
-          ])
-          .select();
+          .insert([meditationRecord]);
           
-        console.log('Inserted test record:', data, error);
+        if (error) {
+          console.error('Failed to save meditation:', error);
+        } else {
+          console.log('Successfully saved meditation record');
+          setSessionsSaved(true);
+          setTotalSessions(prev => prev + 1);
+        }
       }
     } catch (e) {
-      console.error('Error preparing database:', e);
+      console.error('Error during meditation record save:', e);
     }
     
     // Go back to home and provide a refresh parameter

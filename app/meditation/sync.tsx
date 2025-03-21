@@ -133,104 +133,54 @@ export default function SyncMeditationScreen() {
     if (isUserProfile(user)) {
       const saveCompletion = async () => {
         try {
-          // First try to fix both schema and permissions
-          try {
-            await fixDatabaseSchema();
-            await fixMeditationPermissions();
-            console.log('Database schema and permissions fixed');
-          } catch (fixError) {
-            console.error('Error fixing database:', fixError);
-            // Continue anyway, we'll try the insert below
-          }
+          console.log('Saving meditation completion');
           
           // For scheduled events, update participant record
           if (!isQuickMeditation && !isGlobalMeditation) {
-            const { data: participantData } = await supabase
-              .from('meditation_participants')
-              .select('id')
-              .eq('event_id', eventId)
-              .eq('user_id', user.id)
-              .eq('active', true)
-              .is('left_at', null)
-              .single();
-
-            if (participantData) {
-              await supabase
+            try {
+              const { data: participantData } = await supabase
                 .from('meditation_participants')
-                .update({
-                  active: false,
-                  left_at: new Date().toISOString()
-                })
-                .eq('id', participantData.id);
+                .select('id')
+                .eq('event_id', eventId)
+                .eq('user_id', user.id)
+                .eq('active', true)
+                .is('left_at', null)
+                .single();
+
+              if (participantData) {
+                await supabase
+                  .from('meditation_participants')
+                  .update({
+                    active: false,
+                    left_at: new Date().toISOString()
+                  })
+                  .eq('id', participantData.id);
+              }
+            } catch (error) {
+              console.log('No active participant record found or could not update', error);
             }
           }
 
-          // Save to meditation_completions for ALL meditation types
-          const completionData = {
-            user_id: user.id,
-            event_id: isQuickMeditation ? null : isGlobalMeditation ? 'global' : eventId,
-            duration: actualDuration,
-            completed: true,
-            // Add a type field to distinguish quick meditations
-            meditation_type: isQuickMeditation ? 'quick' : isGlobalMeditation ? 'global' : 'scheduled'
-          };
-          
-          console.log('Saving meditation completion:', completionData);
-          
-          // Try first with the meditation_completions table including meditation_type
+          // Save directly to user_meditation_history table only
           try {
-            const { data, error: insertError } = await supabase.from('meditation_completions').insert([
-              completionData
-            ]).select();
+            const historyRecord = {
+              user_id: user.id,
+              duration: Math.round(actualDuration / 60), // Convert to minutes
+              date: new Date().toISOString(),
+              notes: isQuickMeditation ? 'Quick meditation' : 
+                     isGlobalMeditation ? 'Global meditation' : 
+                     `Scheduled meditation: ${eventDetails?.title || ''}`
+            };
             
-            if (insertError) {
-              console.error('Error inserting meditation completion with type:', insertError);
+            console.log('Inserting into user_meditation_history:', historyRecord);
+            
+            await supabase
+              .from('user_meditation_history')
+              .insert([historyRecord]);
               
-              // If error mentions meditation_type column, try without it
-              if (insertError.message && insertError.message.includes('meditation_type')) {
-                console.log('Trying without meditation_type field');
-                
-                // Create a version without the meditation_type field
-                const { meditation_type, ...completionDataWithoutType } = completionData;
-                
-                const { data: dataWithoutType, error: insertErrorWithoutType } = await supabase
-                  .from('meditation_completions')
-                  .insert([completionDataWithoutType])
-                  .select();
-                
-                if (insertErrorWithoutType) {
-                  console.error('Error inserting without meditation_type:', insertErrorWithoutType);
-                  throw insertErrorWithoutType;
-                } else {
-                  console.log('Meditation completion saved successfully without type field:', dataWithoutType);
-                }
-              } else {
-                throw insertError;
-              }
-            } else {
-              console.log('Meditation completion saved successfully with type field:', data);
-            }
-            
-            // Additionally save to user_meditation_history for compatibility
-            try {
-              await supabase.from('user_meditation_history').insert([{
-                user_id: user.id,
-                event_id: isQuickMeditation ? null : isGlobalMeditation ? null : eventId,
-                duration: actualDuration,
-                tradition: null, // Could get this from user preferences if needed
-                date: new Date().toISOString()
-              }]);
-              console.log('Also saved to user_meditation_history for compatibility');
-            } catch (historyError) {
-              console.error('Error saving to user_meditation_history:', historyError);
-            }
-          } catch (error) {
-            console.error('Failed to save meditation completion:', error);
-            Alert.alert(
-              'Error Saving Meditation',
-              'There was an error saving your meditation. Please try again.',
-              [{ text: 'OK' }]
-            );
+            console.log('Successfully saved to user_meditation_history');
+          } catch (historyError) {
+            console.error('Error saving to user_meditation_history:', historyError);
           }
 
           setTimeout(() => {
