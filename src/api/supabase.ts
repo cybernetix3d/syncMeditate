@@ -255,3 +255,91 @@ export const fixMeditationPermissions = async () => {
     return { success: false, error: err };
   }
 };
+
+// Helper function to execute SQL directly
+export const executeSQLSafely = async (sql: string): Promise<boolean> => {
+  try {
+    console.log('Attempting to execute SQL directly...');
+    
+    // First try using RPC if available
+    try {
+      await supabase.rpc('execute_sql', { sql_command: sql });
+      console.log('SQL executed successfully via RPC');
+      return true;
+    } catch (rpcError) {
+      console.log('RPC method not available, trying alternatives:', rpcError);
+      
+      // If RPC fails, try using special REST endpoint if it exists
+      try {
+        const response = await fetch(`${supabaseUrl}/rest/v1/rpc/execute_sql`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabaseAnonKey,
+            'Authorization': `Bearer ${supabaseAnonKey}`
+          },
+          body: JSON.stringify({ sql_command: sql })
+        });
+        
+        if (response.ok) {
+          console.log('SQL executed successfully via REST endpoint');
+          return true;
+        } else {
+          const errorText = await response.text();
+          console.error('REST endpoint error:', errorText);
+          return false;
+        }
+      } catch (restError) {
+        console.error('Could not execute SQL via any method:', restError);
+        return false;
+      }
+    }
+  } catch (error) {
+    console.error('Error executing SQL:', error);
+    return false;
+  }
+};
+
+// Helper function to ensure meditation events table has necessary columns
+export const ensureRecurringEventsSchema = async (): Promise<boolean> => {
+  try {
+    const sql = `
+      ALTER TABLE meditation_events ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN DEFAULT FALSE;
+      ALTER TABLE meditation_events ADD COLUMN IF NOT EXISTS recurrence_type TEXT DEFAULT NULL;
+      ALTER TABLE meditation_events ADD COLUMN IF NOT EXISTS system_created BOOLEAN DEFAULT FALSE;
+      
+      CREATE TABLE IF NOT EXISTS app_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT,
+          created_at TIMESTAMPTZ DEFAULT now(),
+          updated_at TIMESTAMPTZ DEFAULT now()
+      );
+      
+      ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+      
+      BEGIN;
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_policy 
+          WHERE polrelid = 'app_settings'::regclass 
+          AND polname = 'Anyone can read app settings'
+        ) THEN
+          CREATE POLICY "Anyone can read app settings"
+          ON app_settings
+          FOR SELECT
+          USING (true);
+        END IF;
+      EXCEPTION WHEN OTHERS THEN
+        -- Ignore error
+      END;
+      $$;
+      COMMIT;
+    `;
+    
+    return await executeSQLSafely(sql);
+  } catch (error) {
+    console.error('Error ensuring recurring events schema:', error);
+    return false;
+  }
+};

@@ -18,6 +18,7 @@ import Button from '@/src/components/common/Button';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useFocusEffect } from '@react-navigation/native';
+import { createSolarEvents } from '@/app/events/create';
 
 // Event type definition
 interface MeditationEvent {
@@ -31,6 +32,8 @@ interface MeditationEvent {
   created_at: string;
   is_global: boolean;
   participant_count?: number;
+  is_recurring: boolean;
+  recurrence_type: string | null;
 }
 
 // Section type for grouped events
@@ -95,8 +98,21 @@ const EventCard: React.FC<EventCardProps> = ({ event, onJoin }) => {
     router.push(`/meditation/${event.id}`);
   };
   
+  const isSystemEvent = 
+    event.title.includes("Daily Sunrise") || 
+    event.title.includes("Midday Mindfulness") || 
+    event.title.includes("Sunset Reflection") || 
+    event.title.includes("Midnight Stillness");
+
   return (
-    <TouchableOpacity style={styles.eventCard} onPress={handlePress} activeOpacity={0.7}>
+    <TouchableOpacity 
+      style={[
+        styles.eventCard, 
+        isSystemEvent && styles.systemEventCard
+      ]} 
+      onPress={handlePress} 
+      activeOpacity={0.7}
+    >
       <View style={styles.cardHeader}>
         <View style={[styles.traditionIcon, { backgroundColor: traditionObj.color }]}>
           <Ionicons name={traditionObj.icon as any} size={20} color={COLORS.white} />
@@ -115,7 +131,15 @@ const EventCard: React.FC<EventCardProps> = ({ event, onJoin }) => {
         </View>
       </View>
       <View style={styles.cardBody}>
-        <Text style={styles.eventTitle}>{event.title}</Text>
+        <View style={styles.titleContainer}>
+          <Text style={styles.eventTitle}>{event.title}</Text>
+          {event.is_recurring && (
+            <Ionicons name="repeat" size={16} color={COLORS.secondary} style={styles.recurringIcon} />
+          )}
+          {isSystemEvent && (
+            <Ionicons name="star" size={16} color="#FFD700" style={styles.recurringIcon} />
+          )}
+        </View>
         {event.description ? (
           <Text style={styles.eventDescription} numberOfLines={2}>
             {event.description}
@@ -136,6 +160,15 @@ const EventCard: React.FC<EventCardProps> = ({ event, onJoin }) => {
             <View style={styles.detailItem}>
               <Ionicons name="globe-outline" size={16} color={COLORS.gray} />
               <Text style={styles.detailText}>Global</Text>
+            </View>
+          )}
+          {event.is_recurring && (
+            <View style={styles.detailItem}>
+              <Ionicons name="repeat-outline" size={16} color={COLORS.gray} />
+              <Text style={styles.detailText}>
+                {event.recurrence_type === 'daily' ? 'Daily' : 
+                 event.recurrence_type === 'weekly' ? 'Weekly' : 'Monthly'}
+              </Text>
             </View>
           )}
         </View>
@@ -177,6 +210,60 @@ const DateHeader: React.FC<DateHeaderProps> = ({ date }) => {
   );
 };
 
+// Add this function above fetchEvents
+const checkAndCreateSolarEvents = async (): Promise<boolean> => {
+  try {
+    console.log('Checking for solar events...');
+    
+    // Get current date
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    console.log('Checking for events between:', today.toISOString(), 'and', tomorrow.toISOString());
+    
+    // Check if we have any solar events for today
+    const { data, error } = await supabase
+      .from('meditation_events')
+      .select('id, title, start_time')
+      .or(`title.ilike.%Sunrise%,title.ilike.%Midday%,title.ilike.%Sunset%,title.ilike.%Midnight%`)
+      .gte('start_time', today.toISOString())
+      .lt('start_time', tomorrow.toISOString());
+    
+    if (error) {
+      console.error("Error checking for solar events:", error);
+      return false;
+    }
+    
+    if (!data || data.length < 4) {
+      console.log(`Found only ${data?.length || 0} solar events for today, creating new ones`);
+      console.log('Events found:', data?.map(e => e.title).join(', ') || 'none');
+      
+      try {
+        const success = await createSolarEvents();
+        if (success) {
+          console.log("Successfully created solar events");
+          return true;
+        } else {
+          console.error("Failed to create solar events");
+          return false;
+        }
+      } catch (createError) {
+        console.error("Error during solar event creation:", createError);
+        return false;
+      }
+    } else {
+      console.log(`Found ${data.length} solar events for today, no need to create new ones`);
+      console.log('Events found:', data.map(e => e.title).join(', '));
+      return true;
+    }
+  } catch (error) {
+    console.error("Error checking for solar events:", error);
+    return false;
+  }
+};
+
 export default function EventsScreen() {
   const { user } = useAuth();
   const router = useRouter();
@@ -190,8 +277,12 @@ export default function EventsScreen() {
     try {
       setLoading(true);
       const now = new Date();
+      console.log('Fetching events at:', now.toISOString());
       
-      // Get all future events and recent events
+      // First, always check and create solar events if needed
+      await checkAndCreateSolarEvents();
+      
+      // Then fetch all events including the newly created ones
       const { data, error } = await supabase
         .from('meditation_events')
         .select('*')
@@ -202,12 +293,42 @@ export default function EventsScreen() {
         return;
       }
 
-      // Only keep events that haven't ended yet
-      const activeEvents = (data || []).filter(event => {
-        const startTime = new Date(event.start_time);
-        const endTime = new Date(startTime.getTime() + event.duration * 60000); // Convert duration from minutes to milliseconds
-        return endTime > now; // Only show events that haven't ended yet
+      console.log(`Retrieved ${data?.length || 0} events from database`);
+      
+      // Mark solar events as recurring based on their titles
+      const enhancedEvents = (data || []).map(event => {
+        const isSolarEvent = 
+          event.title.includes("Daily Sunrise") || 
+          event.title.includes("Midday Mindfulness") || 
+          event.title.includes("Sunset Reflection") || 
+          event.title.includes("Midnight Stillness");
+        
+        // Add virtual recurring flag for these special events
+        return {
+          ...event,
+          is_recurring: !!isSolarEvent,
+          recurrence_type: isSolarEvent ? 'daily' : null
+        };
       });
+
+      // Only keep events that haven't ended yet
+      const activeEvents = enhancedEvents.filter(event => {
+        const startTime = new Date(event.start_time);
+        
+        // For recurring events, adjust the date to today
+        if (event.is_recurring) {
+          const today = new Date();
+          startTime.setFullYear(today.getFullYear(), today.getMonth(), today.getDate());
+        }
+        
+        // Calculate end time based on duration
+        const endTime = new Date(startTime.getTime() + event.duration * 60000); // Convert duration from minutes to milliseconds
+        
+        // For recurring events, we always show them. For regular events, only if they haven't ended yet
+        return event.is_recurring || endTime > now;
+      });
+
+      console.log(`${activeEvents.length} active events after filtering`);
 
       const eventsWithCounts = await Promise.all(
         activeEvents.map(async (event) => {
@@ -236,19 +357,77 @@ export default function EventsScreen() {
   
   const groupEventsByDate = (events: MeditationEvent[]) => {
     const grouped: Record<string, MeditationEvent[]> = {};
+    
+    // Get dates for the next 7 days for recurring events
+    const dates: Date[] = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() + i);
+      date.setHours(0, 0, 0, 0); // Normalize to start of day
+      dates.push(date);
+    }
+    
     events.forEach(event => {
-      const date = new Date(event.start_time).toDateString();
-      if (!grouped[date]) {
-        grouped[date] = [];
+      const startDate = new Date(event.start_time);
+      
+      if (event.is_recurring) {
+        // For recurring events, create a copy for each day in our window
+        dates.forEach(date => {
+          // Clone the event
+          const clonedEvent = { ...event };
+          
+          // For solar events, set the time based on the event title
+          const hour = clonedEvent.title.includes("Sunrise") 
+            ? 6 // 6 AM for Sunrise
+            : clonedEvent.title.includes("Midday") 
+              ? 12 // 12 PM for Midday
+              : clonedEvent.title.includes("Sunset") 
+                ? 18 // 6 PM for Sunset
+                : 0; // 12 AM for Midnight
+          
+          // Create a new date with the current date from our window and the time from the original event
+          const newStartTime = new Date(date);
+          newStartTime.setHours(hour, 0, 0, 0);
+          
+          // Skip if this event time is in the past
+          const now = new Date();
+          if (newStartTime < now && date.getDate() === now.getDate()) {
+            return;
+          }
+          
+          // Update the start time for this instance
+          clonedEvent.start_time = newStartTime.toISOString();
+          
+          // Format the date as YYYY-MM-DD for grouping
+          const dateKey = newStartTime.toISOString().split('T')[0];
+          
+          // Add to our grouped object
+          if (!grouped[dateKey]) {
+            grouped[dateKey] = [];
+          }
+          grouped[dateKey].push(clonedEvent);
+        });
+      } else {
+        // For non-recurring events, just use the actual date
+        const dateKey = startDate.toISOString().split('T')[0];
+        
+        if (!grouped[dateKey]) {
+          grouped[dateKey] = [];
+        }
+        grouped[dateKey].push(event);
       }
-      grouped[date].push(event);
     });
+    
+    // Convert the grouped object to an array and sort by date
     const sections = Object.keys(grouped)
-      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+      .sort()
       .map(date => ({
         title: date,
-        data: grouped[date]
+        data: grouped[date].sort((a, b) => 
+          new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+        ),
       }));
+    
     setEventSections(sections);
   };
   
@@ -338,36 +517,55 @@ export default function EventsScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.headerContainer, { backgroundColor: colors.background }]}>
         <Text style={[styles.headerTitle, { color: colors.primary }]}>Upcoming Sessions</Text>
-        <TouchableOpacity 
-          style={[styles.createEventButton, { backgroundColor: colors.secondary }]} 
-          onPress={handleCreateEvent} 
-          activeOpacity={0.7}
-        >
-          <Ionicons name="add" size={20} color={colors.white} />
-          <Text style={[styles.createEventText, { color: colors.white }]}>Create</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtonsContainer}>
+          <TouchableOpacity 
+            style={[styles.iconButton]} 
+            onPress={onRefresh} 
+            activeOpacity={0.7}
+            disabled={refreshing}
+          >
+            <Ionicons 
+              name="refresh" 
+              size={24} 
+              color={colors.primary} 
+              style={{ opacity: refreshing ? 0.5 : 1 }}
+            />
+            {refreshing && (
+              <ActivityIndicator 
+                size="small" 
+                color={colors.primary} 
+                style={styles.refreshIndicator} 
+              />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.createEventButton, { backgroundColor: colors.secondary }]} 
+            onPress={handleCreateEvent} 
+            activeOpacity={0.7}
+          >
+            <Ionicons name="add" size={20} color={colors.white} />
+            <Text style={[styles.createEventText, { color: colors.white }]}>Create</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       
       {eventSections.length > 0 ? (
         <SectionList
           sections={eventSections}
+          renderItem={({ item }) => <EventCard event={item} onJoin={handleJoinEvent} />}
+          renderSectionHeader={({ section: { title } }) => <DateHeader date={title} />}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <EventCard event={item} onJoin={handleJoinEvent} />
-          )}
-          renderSectionHeader={({ section: { title } }) => (
-            <DateHeader date={title} />
-          )}
-          contentContainerStyle={styles.eventsList}
+          contentContainerStyle={styles.listContent}
           stickySectionHeadersEnabled={true}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh} 
               colors={[colors.primary]}
               tintColor={colors.primary}
             />
           }
+          ListEmptyComponent={renderEmptyState()}
         />
       ) : (
         <View style={styles.emptyStateWrapper}>
@@ -392,6 +590,14 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
+  },
+  headerButtonsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconButton: {
+    padding: 8,
+    borderRadius: 20,
   },
   createEventButton: {
     flexDirection: 'row',
@@ -419,15 +625,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
   },
   dateHeaderText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
+    color: COLORS.primary,
+    marginRight: 10,
   },
   dateHeaderLine: {
     flex: 1,
     height: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
   },
   eventCard: {
     backgroundColor: COLORS.white,
@@ -572,5 +784,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.gray,
     textAlign: 'right',
+  },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recurringIcon: {
+    marginLeft: 5,
+  },
+  refreshIndicator: {
+    marginLeft: 5,
+  },
+  listContent: {
+    paddingBottom: 20,
+  },
+  systemEventCard: {
+    backgroundColor: COLORS.background,
+    borderLeftColor: COLORS.accent,
+    borderLeftWidth: 30,
+    
   },
 });

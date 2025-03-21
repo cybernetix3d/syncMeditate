@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -10,12 +10,13 @@ import {
   Platform,
   KeyboardAvoidingView,
   Modal,
-  ActivityIndicator
+  ActivityIndicator,
+  Switch
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/context/AuthProvider';
-import { supabase, checkSupabaseConnection } from '@/src/api/supabase';
+import { supabase, checkSupabaseConnection, ensureRecurringEventsSchema } from '@/src/api/supabase';
 import { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
 import Button from '@/src/components/common/Button';
 import { COLORS } from '@/src/constants/Styles';
@@ -51,6 +52,142 @@ const ensureGuestPermissions = async () => {
   }
 };
 
+// Function to create solar events that occur daily (sunrise, noon, sunset, midnight)
+export const createSolarEvents = async (): Promise<boolean> => {
+  try {
+    console.log('Creating solar events');
+    
+    // Try to find an existing user to use as the creator for system events
+    let systemId = null;
+    
+    try {
+      // First try to get the current authenticated user
+      const { data: session } = await supabase.auth.getSession();
+      if (session?.session?.user?.id) {
+        systemId = session.session.user.id;
+        console.log('Using current authenticated user as system ID:', systemId);
+      } else {
+        // Try to get the first user from the system
+        const { data: users, error: userError } = await supabase
+          .from('users')
+          .select('id')
+          .limit(1);
+          
+        if (userError) {
+          console.error('Error fetching users:', userError);
+          // Use 'guest-user' as a final fallback
+          systemId = 'guest-user';
+          console.log('Using guest-user as system ID after error');
+        } else if (users && users.length > 0) {
+          systemId = users[0].id;
+          console.log('Using existing user as system ID:', systemId);
+        } else {
+          console.log('No users found, using guest-user as system ID');
+          systemId = 'guest-user';
+        }
+      }
+    } catch (error) {
+      console.error('Error finding user for system events:', error);
+      // Final fallback
+      systemId = 'guest-user';
+      console.log('Using guest-user as system ID after exception');
+    }
+    
+    // Get current date in user's timezone
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    console.log('Creating events based on date:', today.toISOString());
+    
+    // Define the four solar events with proper times
+    const solarEvents = [
+      {
+        title: "Daily Sunrise Meditation",
+        description: "Start your day with a peaceful sunrise meditation. This daily practice helps center your mind and prepare for the day ahead.",
+        start_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 6, 0, 0).toISOString(),
+        duration: 15,
+        tradition: 'universal',
+        created_by: systemId,
+        is_global: true,
+      },
+      {
+        title: "Midday Mindfulness",
+        description: "Take a break from your busy day to recenter and find clarity with this midday practice.",
+        start_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0).toISOString(),
+        duration: 10,
+        tradition: 'universal',
+        created_by: systemId,
+        is_global: true,
+      },
+      {
+        title: "Sunset Reflection",
+        description: "Wind down your day with a peaceful sunset meditation. Release the day's tensions and find tranquility.",
+        start_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 18, 0, 0).toISOString(),
+        duration: 20,
+        tradition: 'universal',
+        created_by: systemId,
+        is_global: true,
+      },
+      {
+        title: "Midnight Stillness",
+        description: "Experience the profound silence of late night meditation. Connect with your deeper self in this quiet practice.",
+        start_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0).toISOString(), 
+        duration: 15,
+        tradition: 'universal',
+        created_by: systemId,
+        is_global: true,
+      }
+    ];
+    
+    // Create the events in the database
+    try {
+      const { data, error } = await supabase
+        .from('meditation_events')
+        .insert(solarEvents)
+        .select();
+      
+      if (error) {
+        console.error('Error creating solar events:', error);
+        
+        // If error is related to created_by constraint, try once more with null
+        if (error.code === '23503' && error.message.includes('meditation_events_created_by_fkey')) {
+          console.log('Retrying with NULL for created_by field');
+          
+          // Set all created_by to null and try again
+          const nullEvents = solarEvents.map(event => ({
+            ...event,
+            created_by: null
+          }));
+          
+          const { data: retryData, error: retryError } = await supabase
+            .from('meditation_events')
+            .insert(nullEvents)
+            .select();
+            
+          if (retryError) {
+            console.error('Second attempt failed:', retryError);
+            return false;
+          }
+          
+          console.log(`Successfully created ${retryData?.length || 0} solar events on second attempt`);
+          return true;
+        }
+        
+        return false;
+      }
+      
+      console.log(`Successfully created ${data?.length || 0} solar events`);
+      return true;
+    } catch (insertError) {
+      console.error('Exception during database insertion:', insertError);
+      return false;
+    }
+  } catch (error) {
+    console.error('Exception in createSolarEvents:', error);
+    return false;
+  }
+};
+
 export default function CreateEventScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -66,6 +203,10 @@ export default function CreateEventScreen() {
   const [tradition, setTradition] = useState(FAITH_TRADITIONS[0].id);
   const [isGlobal, setIsGlobal] = useState(true);
   const [loading, setLoading] = useState(false);
+  
+  // Recurring event state
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState('daily');
 
   const validateForm = () => {
     console.log('Starting form validation with:', { 
@@ -150,6 +291,9 @@ export default function CreateEventScreen() {
         tradition,
         created_by: createdBy,
         is_global: isGlobal,
+        // Add recurring event properties
+        is_recurring: isRecurring,
+        recurrence_type: isRecurring ? recurrenceType : null,
       };
 
       console.log('Attempting to create event with data:', eventData);
@@ -329,6 +473,143 @@ export default function CreateEventScreen() {
     );
   };
 
+  const renderRecurringOptions = () => {
+    return (
+      <>
+        <View style={styles.toggleContainer}>
+          <Text style={[styles.label, { color: colors.bodyText }]}>Recurring Event</Text>
+          <View style={styles.toggleRow}>
+            <Switch
+              value={isRecurring}
+              onValueChange={setIsRecurring}
+              trackColor={{ false: colors.gray, true: colors.primary }}
+              thumbColor={COLORS.white}
+            />
+            <Text style={[styles.toggleText, { color: colors.bodyText }]}>
+              {isRecurring ? 'Recurring' : 'One-time'}
+            </Text>
+          </View>
+        </View>
+        
+        {isRecurring && (
+          <View style={styles.recurrenceContainer}>
+            <Text style={[styles.label, { color: colors.bodyText }]}>Recurrence Pattern</Text>
+            <View style={styles.recurrenceOptionsContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.recurrenceOption,
+                  { 
+                    backgroundColor: recurrenceType === 'daily' 
+                      ? COLORS.primary 
+                      : colors.surface 
+                  }
+                ]}
+                onPress={() => setRecurrenceType('daily')}
+              >
+                <Text 
+                  style={[
+                    styles.recurrenceText, 
+                    { 
+                      color: recurrenceType === 'daily' 
+                        ? COLORS.white 
+                        : colors.bodyText 
+                    }
+                  ]}
+                >
+                  Daily
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.recurrenceOption,
+                  { 
+                    backgroundColor: recurrenceType === 'weekly' 
+                      ? COLORS.primary 
+                      : colors.surface 
+                  }
+                ]}
+                onPress={() => setRecurrenceType('weekly')}
+              >
+                <Text 
+                  style={[
+                    styles.recurrenceText, 
+                    { 
+                      color: recurrenceType === 'weekly' 
+                        ? COLORS.white 
+                        : colors.bodyText 
+                    }
+                  ]}
+                >
+                  Weekly
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.recurrenceOption,
+                  { 
+                    backgroundColor: recurrenceType === 'monthly' 
+                      ? COLORS.primary 
+                      : colors.surface 
+                  }
+                ]}
+                onPress={() => setRecurrenceType('monthly')}
+              >
+                <Text 
+                  style={[
+                    styles.recurrenceText, 
+                    { 
+                      color: recurrenceType === 'monthly' 
+                        ? COLORS.white 
+                        : colors.bodyText 
+                    }
+                  ]}
+                >
+                  Monthly
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </>
+    );
+  };
+
+  // Call createSolarEvents when the component mounts
+  useEffect(() => {
+    // Check if we should create solar events
+    const checkAndCreateSolarEvents = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'solar_events_created')
+          .single();
+        
+        if (error || !data || data.value !== 'true') {
+          // Create solar events
+          const success = await createSolarEvents();
+          
+          if (success) {
+            // Update the setting to indicate solar events have been created
+            await supabase
+              .from('app_settings')
+              .upsert([
+                { key: 'solar_events_created', value: 'true' }
+              ]);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking app settings:', error);
+        // Try to create the events anyway
+        await createSolarEvents();
+      }
+    };
+    
+    checkAndCreateSolarEvents();
+  }, []);
+
   return (
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -359,6 +640,8 @@ export default function CreateEventScreen() {
           {renderDateTimePickers()}
 
           {renderDurationOptions()}
+          
+          {renderRecurringOptions()}
 
           <Text style={[styles.label, { color: colors.bodyText }]}>Faith Tradition</Text>
           <ScrollView 
@@ -560,21 +843,36 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   toggleContainer: {
+    marginVertical: 10,
+  },
+  toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
+    marginTop: 5,
   },
-  toggle: {
-    width: 50,
-    height: 30,
-    borderRadius: 15,
-    padding: 5,
+  toggleText: {
+    marginLeft: 10,
+    fontSize: 16,
   },
-  toggleHandle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+  recurrenceContainer: {
+    marginVertical: 10,
+  },
+  recurrenceOptionsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 5,
+  },
+  recurrenceOption: {
+    padding: 10,
+    borderRadius: 20,
+    marginRight: 10,
+    marginBottom: 10,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  recurrenceText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   footer: {
     flexDirection: 'row',

@@ -241,6 +241,13 @@ export default function MeditationDetailsScreen() {
     return FAITH_TRADITIONS.find(t => t.id === event.tradition) || FAITH_TRADITIONS[0];
   };
 
+  const isSystemEvent = event && (
+    event.title.includes("Daily Sunrise") || 
+    event.title.includes("Midday Mindfulness") || 
+    event.title.includes("Sunset Reflection") || 
+    event.title.includes("Midnight Stillness")
+  );
+
   if (loading) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
@@ -361,6 +368,20 @@ export default function MeditationDetailsScreen() {
                   <Text style={[styles.infoLabel, { color: colors.gray }]}>Host</Text>
                   <Text style={[styles.infoValue, { color: colors.headerText }]}>
                     {event.creator.display_name}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {isSystemEvent && (
+              <View style={styles.infoRow}>
+                <View style={[styles.iconContainer, { backgroundColor: '#FFD700' }]}>
+                  <Ionicons name="star" size={20} color={COLORS.white} />
+                </View>
+                <View style={styles.infoTextContainer}>
+                  <Text style={[styles.infoLabel, { color: colors.gray }]}>Daily Event</Text>
+                  <Text style={[styles.infoValue, { color: colors.headerText }]}>
+                    This meditation occurs daily at the same time
                   </Text>
                 </View>
               </View>
