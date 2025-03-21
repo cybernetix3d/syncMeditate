@@ -1,42 +1,42 @@
 import { StyleSheet } from 'react-native';
 
-// App colors with improved complementary options
+// App colors with improved contrast for better readability
 export const LIGHT_COLORS = {
-  primary: '#3D8CAB',      // Teal blue - main brand color
-  secondary: '#D9A391',    // Light terracotta - complementary to teal
-  accent: '#D93C64',       // Raspberry - vibrant accent
-  pastel1: '#F2C94C',      // Golden yellow - warm accent
-  pastel2: '#A7D1DF',      // Light teal - complementary to primary
-  pastel3: '#34AB6F',      // Emerald green - fresh accent
+  primary: '#2D7599',      // Darker teal blue - improved contrast  
+  secondary: '#C47A62',    // Darker terracotta - better contrast
+  accent: '#CD2B53',       // Deeper raspberry - more vibrant
+  pastel1: '#E5B82E',      // Richer golden yellow
+  pastel2: '#8ABCD1',      // Medium teal - improved visibility
+  pastel3: '#23945A',      // Deeper emerald - better contrast
   background: '#F9FBFD',   // Very light blue-white
   surface: '#FFFFFF',      // White
   white: '#FFFFFF',
-  lightGray: '#F0F5F7',
-  mediumGray: '#E1E8ED',
-  gray: '#8D989F',
-  darkGray: '#4F5E66',
-  headerText: '#286F8A',   // Dark teal for headers
-  bodyText: '#394B54',     // Dark blue-gray for body text
-  subtitleText: '#637680'  // Medium blue-gray for subtitles
+  lightGray: '#E8F0F4',    // Slightly more visible light gray
+  mediumGray: '#D5DFE5',   // Improved medium gray
+  gray: '#718089',         // Darker gray for better text contrast
+  darkGray: '#3E4C54',     // Much darker gray for better contrast
+  headerText: '#1B5A75',   // Darker teal for better header contrast
+  bodyText: '#2A3A43',     // Darker blue-gray for improved readability
+  subtitleText: '#4F626A'  // Darker subtitle text
 };
 
 export const DARK_COLORS = {
-  primary: '#4A9DBE',      // Brighter teal blue for dark mode
-  secondary: '#BE785A',    // Brighter terracotta - complementary
-  accent: '#ED4B78',       // Brighter raspberry for dark mode
-  pastel1: '#FFD966',      // Bright gold - warm accent
-  pastel2: '#79C0D8',      // Light teal - complementary to primary
-  pastel3: '#3DC17E',      // Brighter emerald for dark mode
-  background: '#121A1F',   // Very dark blue-black
-  surface: '#1A252C',      // Dark blue-gray
+  primary: '#5AB0D1',      // Brighter teal blue for better contrast in dark mode
+  secondary: '#DF8E70',    // Brighter terracotta - more visible
+  accent: '#FF5D8A',       // Brighter raspberry for improved contrast
+  pastel1: '#FFE07A',      // Brighter gold - more visible in dark 
+  pastel2: '#8FD6EE',      // Brighter light teal
+  pastel3: '#4FDA91',      // Brighter emerald for visibility
+  background: '#0A1216',   // Darker blue-black for better contrast
+  surface: '#131E24',      // Darker blue-gray
   white: '#FFFFFF',
-  lightGray: '#2A343C',
-  mediumGray: '#354551',
-  gray: '#6D7C86',
-  darkGray: '#C5D0D6',
-  headerText: '#79C0D8',   // Light teal for headers
-  bodyText: '#DCE5EB',     // Light gray for body text
-  subtitleText: '#A0ABB3'  // Medium gray for subtitles
+  lightGray: '#1F2930',    // Slightly darker for better element separation
+  mediumGray: '#293640',   // Improved contrast medium gray
+  gray: '#8996A1',         // Brighter gray for better visibility
+  darkGray: '#DCE8F0',     // Brighter for better text contrast
+  headerText: '#93D8F0',   // Brighter teal for better header visibility
+  bodyText: '#EEF5FA',     // Brighter gray for improved readability
+  subtitleText: '#B7C5CE'  // Brighter subtitle text
 };
 
 // Export a function to get colors based on theme

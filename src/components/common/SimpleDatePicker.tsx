@@ -98,20 +98,20 @@ const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
   };
   
   return (
-    <View>
+    <View style={styles.container}>
       {label && <Text style={styles.label}>{label}</Text>}
       
       <TouchableOpacity 
-        style={styles.pickerButton}
+        style={[styles.pickerButton, mode === 'date' ? styles.dateButton : styles.timeButton]}
         onPress={() => setModalVisible(true)}
       >
         <Ionicons 
           name={mode === 'date' ? 'calendar-outline' : 'time-outline'} 
-          size={20} 
+          size={24} 
           color={COLORS.primary} 
         />
         <Text style={styles.pickerText}>{getDisplayText()}</Text>
-        <Ionicons name="chevron-down" size={16} color={COLORS.gray} />
+        <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
       </TouchableOpacity>
       
       <Modal
@@ -153,25 +153,37 @@ const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
 };
 
 const styles = StyleSheet.create({
+  container: {
+    marginBottom: 8,
+  },
   label: {
     fontSize: 16,
     fontWeight: '500',
     marginBottom: 8,
-    color: COLORS.primary,
+    color: COLORS.darkGray,
   },
   pickerButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.pastel2,
+    justifyContent: 'center',
+    backgroundColor: '#B8D8E1', // Light blue color
     borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
+    padding: 16,
+    minHeight: 60,
+  },
+  dateButton: {
+    width: 120, // Fixed width for date button
+    marginRight: 8,
+  },
+  timeButton: {
+    flex: 1, // Fill remaining space for time button
   },
   pickerText: {
     flex: 1,
     fontSize: 16,
     marginLeft: 8,
     color: COLORS.darkGray,
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,
@@ -179,7 +191,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalContent: {
-    backgroundColor: COLORS.pastel2,
+    backgroundColor: 'white',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 16,

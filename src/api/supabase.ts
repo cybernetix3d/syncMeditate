@@ -148,3 +148,75 @@ export const checkSupabaseConnection = async () => {
     return false;
   }
 };
+
+// Helper function to fix database schema issues
+export const fixDatabaseSchema = async () => {
+  try {
+    console.log('Attempting to fix database schema...');
+    
+    // Add meditation_type column to meditation_completions if it doesn't exist
+    const { error: columnError } = await supabase.rpc('exec_sql', {
+      query: `
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'meditation_completions' 
+            AND column_name = 'meditation_type'
+          ) THEN
+            ALTER TABLE meditation_completions 
+            ADD COLUMN meditation_type TEXT DEFAULT 'quick';
+            
+            -- Update existing records
+            UPDATE meditation_completions
+            SET meditation_type = CASE
+              WHEN event_id IS NULL THEN 'quick'
+              ELSE 'scheduled'
+            END;
+          END IF;
+        END
+        $$;
+      `
+    });
+
+    if (columnError) {
+      console.error('Error adding meditation_type column:', columnError);
+      throw columnError;
+    }
+    
+    // Create policy for anonymous users to record meditation completions
+    const { error: policyError } = await supabase.rpc('exec_sql', {
+      query: `
+        DO $$
+        BEGIN
+          -- Check if policy exists
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_policies 
+            WHERE tablename = 'meditation_completions' 
+            AND policyname = 'Enable anonymous insert'
+          ) THEN
+            -- Create policy allowing anonymous inserts
+            CREATE POLICY "Enable anonymous insert" ON meditation_completions
+              FOR INSERT WITH CHECK (true);
+          END IF;
+        END
+        $$;
+      `
+    });
+
+    if (policyError) {
+      console.error('Error creating anonymous policy:', policyError);
+      throw policyError;
+    }
+
+    console.log('Database schema fixed successfully');
+    return { success: true, message: 'Database schema updated successfully' };
+  } catch (err) {
+    console.error('Failed to fix database schema:', err);
+    return { 
+      success: false, 
+      message: 'Failed to update database schema',
+      error: err 
+    };
+  }
+};

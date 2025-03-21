@@ -9,12 +9,20 @@ export default function SettingsLayout() {
   const { signOut } = useAuth();
   const { colors } = useTheme();
 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
   return (
     <Stack
       screenOptions={{
         headerRight: () => (
           <TouchableOpacity 
-            onPress={signOut}
+            onPress={handleSignOut}
             style={{ marginRight: 15 }}
           >
             <Ionicons name="log-out-outline" size={24} color={colors.primary} />

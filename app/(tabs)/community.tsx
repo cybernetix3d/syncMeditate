@@ -12,7 +12,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/context/AuthProvider';
-import { supabase } from '@/src/api/supabase';
+import { supabase, fixDatabaseSchema } from '@/src/api/supabase';
 import Button from '@/src/components/common/Button';
 import { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
@@ -313,6 +313,26 @@ export default function CommunityScreen() {
     router.push('/meditation/sync?id=global&duration=20');
   };
 
+  const handleFixDatabase = async () => {
+    try {
+      Alert.alert("Processing", "Updating database schema...");
+      
+      // Use our dedicated function to fix the database schema
+      const result = await fixDatabaseSchema();
+      
+      if (result.success) {
+        Alert.alert("Success", "Database schema updated successfully. Pull down to refresh.");
+        console.log("Database schema updated successfully");
+      } else {
+        console.error("Database update failed:", result.error);
+        Alert.alert("Error", `Database update failed: ${result.message}`);
+      }
+    } catch (error) {
+      console.error("Error updating database:", error);
+      Alert.alert("Error", "Failed to update database. See console for details.");
+    }
+  };
+
   const renderTraditionCard = (tradition: CommunityTradition) => {
     const traditionObj =
       FAITH_TRADITIONS.find(t => t.id === tradition.tradition) || FAITH_TRADITIONS[0];
@@ -356,36 +376,12 @@ export default function CommunityScreen() {
         <Text style={[styles.subtitle, { color: colors.subtitleText }]}>
           Connect with meditators around the world
         </Text>
+        
         <TouchableOpacity
-          onPress={async () => {
-            try {
-              // Manual migration to apply our new admin functions
-              await supabase.rpc('run_manual_migration', {
-                sql_statement: `
-                  -- Add meditation_type column if it doesn't exist
-                  ALTER TABLE meditation_completions ADD COLUMN IF NOT EXISTS meditation_type VARCHAR(20) DEFAULT 'scheduled';
-                  UPDATE meditation_completions SET meditation_type = 'scheduled' WHERE meditation_type IS NULL;
-                  
-                  -- Create policy to allow anonymous users to create events
-                  CREATE POLICY IF NOT EXISTS "Allow anonymous users to create events"
-                  ON meditation_events FOR INSERT
-                  WITH CHECK (true);
-                  
-                  -- Create policy to allow any user to view all meditation events
-                  CREATE POLICY IF NOT EXISTS "Anyone can view meditation events"
-                  ON meditation_events FOR SELECT
-                  USING (true);
-                `
-              });
-              Alert.alert('Success', 'Database updated. Pull down to refresh.');
-            } catch (error) {
-              console.error('Migration error:', error);
-              Alert.alert('Error', 'Could not update database. Check console for details.');
-            }
-          }}
-          style={{ opacity: 0.5 }}
+          onPress={handleFixDatabase}
+          style={[styles.fixDbButton, { backgroundColor: colors.primary }]}
         >
-          <Text style={{ fontSize: 8, color: colors.subtitleText }}>Fix DB</Text>
+          <Text style={styles.fixDbButtonText}>Fix Database Issues</Text>
         </TouchableOpacity>
       </View>
 
@@ -663,5 +659,16 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 20,
+  },
+  fixDbButton: {
+    marginTop: 15,
+    padding: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  fixDbButtonText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: 'white',
   },
 });

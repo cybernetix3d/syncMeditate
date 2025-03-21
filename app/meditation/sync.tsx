@@ -167,30 +167,39 @@ export default function SyncMeditationScreen() {
           
           console.log('Saving meditation completion:', completionData);
           
-          // Try first with the meditation_completions table
-          const { data, error: insertError } = await supabase.from('meditation_completions').insert([
-            completionData
-          ]).select();
-          
-          if (insertError) {
-            console.error('Error inserting meditation completion:', insertError);
+          // Try first with the meditation_completions table including meditation_type
+          try {
+            const { data, error: insertError } = await supabase.from('meditation_completions').insert([
+              completionData
+            ]).select();
             
-            // If the error is related to the table not existing, try the user_meditation_history table instead
-            try {
-              // Also save to user_meditation_history for better compatibility
-              await supabase.from('user_meditation_history').insert([{
-                user_id: user.id,
-                event_id: isQuickMeditation ? null : isGlobalMeditation ? null : eventId,
-                duration: actualDuration,
-                tradition: null, // Could get this from user preferences if needed
-                date: new Date().toISOString()
-              }]);
-              console.log('Saved to user_meditation_history as fallback');
-            } catch (historyError) {
-              console.error('Error saving to user_meditation_history:', historyError);
+            if (insertError) {
+              console.error('Error inserting meditation completion with type:', insertError);
+              
+              // If error mentions meditation_type column, try without it
+              if (insertError.message && insertError.message.includes('meditation_type')) {
+                console.log('Trying without meditation_type field');
+                
+                // Create a version without the meditation_type field
+                const { meditation_type, ...completionDataWithoutType } = completionData;
+                
+                const { data: dataWithoutType, error: insertErrorWithoutType } = await supabase
+                  .from('meditation_completions')
+                  .insert([completionDataWithoutType])
+                  .select();
+                
+                if (insertErrorWithoutType) {
+                  console.error('Error inserting without meditation_type:', insertErrorWithoutType);
+                  throw insertErrorWithoutType;
+                } else {
+                  console.log('Meditation completion saved successfully without type field:', dataWithoutType);
+                }
+              } else {
+                throw insertError;
+              }
+            } else {
+              console.log('Meditation completion saved successfully with type field:', data);
             }
-          } else {
-            console.log('Meditation completion saved successfully:', data);
             
             // Additionally save to user_meditation_history for compatibility
             try {
@@ -205,6 +214,13 @@ export default function SyncMeditationScreen() {
             } catch (historyError) {
               console.error('Error saving to user_meditation_history:', historyError);
             }
+          } catch (error) {
+            console.error('Failed to save meditation completion:', error);
+            Alert.alert(
+              'Error Saving Meditation',
+              'There was an error saving your meditation. Please try again.',
+              [{ text: 'OK' }]
+            );
           }
 
           setTimeout(() => {

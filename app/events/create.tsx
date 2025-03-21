@@ -9,7 +9,8 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
-  Modal
+  Modal,
+  ActivityIndicator
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -225,20 +226,105 @@ export default function CreateEventScreen() {
       <>
         <Text style={[styles.label, { color: colors.bodyText }]}>Date & Time</Text>
         <View style={styles.dateTimeContainer}>
-          <SimpleDatePicker
-            value={date}
-            onChange={(newDate) => setDate(newDate)}
-            mode="date"
-            label=""
-          />
-          
-          <SimpleDatePicker
-            value={date}
-            onChange={(newDate) => setDate(newDate)}
-            mode="time"
-            label=""
-          />
+          <View style={styles.dateTimeRow}>
+            <SimpleDatePicker
+              value={date}
+              onChange={(newDate) => setDate(newDate)}
+              mode="date"
+            />
+            
+            <SimpleDatePicker
+              value={date}
+              onChange={(newDate) => setDate(newDate)}
+              mode="time"
+            />
+          </View>
         </View>
+      </>
+    );
+  };
+
+  const renderDurationOptions = () => {
+    return (
+      <>
+        <Text style={[styles.label, { color: colors.bodyText }]}>Duration (minutes)</Text>
+        <View style={styles.durationOptionsContainer}>
+          {[5, 10, 20].map((mins) => (
+            <TouchableOpacity
+              key={mins}
+              style={[
+                styles.durationOption,
+                { 
+                  backgroundColor: 
+                    !isCustomDuration && Number(duration) === mins 
+                      ? COLORS.primary 
+                      : colors.surface 
+                }
+              ]}
+              onPress={() => {
+                setDuration(mins.toString());
+                setIsCustomDuration(false);
+              }}
+            >
+              <Text 
+                style={[
+                  styles.durationText, 
+                  { 
+                    color: 
+                      !isCustomDuration && Number(duration) === mins 
+                        ? COLORS.white 
+                        : colors.bodyText 
+                  }
+                ]}
+              >
+                {mins} min
+              </Text>
+            </TouchableOpacity>
+          ))}
+          
+          <TouchableOpacity
+            style={[
+              styles.durationOption,
+              { 
+                backgroundColor: 
+                  isCustomDuration 
+                    ? COLORS.primary 
+                    : colors.surface 
+              }
+            ]}
+            onPress={() => setIsCustomDuration(true)}
+          >
+            <Text 
+              style={[
+                styles.durationText, 
+                { 
+                  color: 
+                    isCustomDuration 
+                      ? COLORS.white 
+                      : colors.bodyText 
+                }
+              ]}
+            >
+              Custom
+            </Text>
+          </TouchableOpacity>
+        </View>
+        
+        {isCustomDuration && (
+          <View style={styles.customDurationContainer}>
+            <TextInput
+              style={[
+                styles.input, 
+                { backgroundColor: colors.surface, color: colors.bodyText }
+              ]}
+              value={duration}
+              onChangeText={setDuration}
+              keyboardType="numeric"
+              placeholder="Enter duration (5-180 minutes)"
+              placeholderTextColor={colors.subtitleText}
+            />
+          </View>
+        )}
       </>
     );
   };
@@ -272,92 +358,7 @@ export default function CreateEventScreen() {
 
           {renderDateTimePickers()}
 
-          <Text style={[styles.label, { color: colors.bodyText }]}>Duration (minutes)</Text>
-          <View style={styles.durationContainer}>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              style={styles.durationPresets}
-            >
-              {[5, 10, 20].map((preset) => (
-                <TouchableOpacity
-                  key={preset}
-                  style={[
-                    styles.durationButton,
-                    { 
-                      backgroundColor: !isCustomDuration && Number(duration) === preset 
-                        ? colors.primary 
-                        : colors.surface 
-                    }
-                  ]}
-                  onPress={() => {
-                    setDuration(preset.toString());
-                    setIsCustomDuration(false);
-                  }}
-                >
-                  <Text 
-                    style={[
-                      styles.durationButtonText,
-                      { 
-                        color: !isCustomDuration && Number(duration) === preset 
-                          ? COLORS.white 
-                          : colors.bodyText 
-                      }
-                    ]}
-                  >
-                    {preset} min
-                  </Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity
-                style={[
-                  styles.durationButton,
-                  { 
-                    backgroundColor: isCustomDuration 
-                      ? colors.primary 
-                      : colors.surface 
-                  }
-                ]}
-                onPress={() => setIsCustomDuration(true)}
-              >
-                <Text 
-                  style={[
-                    styles.durationButtonText,
-                    { 
-                      color: isCustomDuration 
-                        ? COLORS.white 
-                        : colors.bodyText 
-                    }
-                  ]}
-                >
-                  Custom
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-            
-            {isCustomDuration && (
-              <View style={styles.customDurationContainer}>
-                <TextInput
-                  style={[
-                    styles.input, 
-                    styles.customDurationInput,
-                    { 
-                      backgroundColor: colors.surface, 
-                      color: colors.bodyText 
-                    }
-                  ]}
-                  value={duration}
-                  onChangeText={setDuration}
-                  placeholder="Enter minutes"
-                  placeholderTextColor={colors.gray}
-                  keyboardType="number-pad"
-                />
-                <Text style={[styles.customDurationLabel, { color: colors.bodyText }]}>
-                  minutes
-                </Text>
-              </View>
-            )}
-          </View>
+          {renderDurationOptions()}
 
           <Text style={[styles.label, { color: colors.bodyText }]}>Faith Tradition</Text>
           <ScrollView 
@@ -393,108 +394,51 @@ export default function CreateEventScreen() {
 
           <View style={styles.toggleContainer}>
             <Text style={[styles.label, { color: colors.bodyText }]}>Make Event Global</Text>
-            <TouchableOpacity
-              style={[
-                styles.toggle,
-                { backgroundColor: isGlobal ? colors.primary : colors.surface }
-              ]}
-              onPress={() => setIsGlobal(!isGlobal)}
-            >
-              <View style={[
-                styles.toggleHandle,
-                { 
-                  backgroundColor: COLORS.white,
-                  transform: [{ translateX: isGlobal ? 20 : 0 }]
-                }
-              ]} />
-            </TouchableOpacity>
+            <View style={styles.cardButtonContainer}>
+              <TouchableOpacity
+                style={[styles.cardButton, { backgroundColor: isGlobal ? colors.primary : colors.surface }]}
+                onPress={() => setIsGlobal(true)}
+              >
+                <Ionicons name="globe-outline" size={24} color={isGlobal ? COLORS.white : colors.primary} />
+                <Text style={[styles.buttonText, { color: isGlobal ? COLORS.white : colors.bodyText }]}>
+                  Public Event
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.cardButton, { backgroundColor: !isGlobal ? colors.primary : colors.surface }]}
+                onPress={() => setIsGlobal(false)}
+              >
+                <Ionicons name="person-outline" size={24} color={!isGlobal ? COLORS.white : colors.primary} />
+                <Text style={[styles.buttonText, { color: !isGlobal ? COLORS.white : colors.bodyText }]}>
+                  Private Event
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        {Platform.OS === 'web' ? (
-          <>
-            <style>
-              {`
-                @keyframes spin {
-                  0% { transform: rotate(0deg); }
-                  100% { transform: rotate(360deg); }
-                }
-                .spinner {
-                  width: 20px;
-                  height: 20px;
-                  border-radius: 50%;
-                  border: 2px solid white;
-                  border-top-color: transparent;
-                  animation: spin 1s linear infinite;
-                }
-              `}
-            </style>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                onClick={() => router.back()}
-                style={{
-                  flex: 1,
-                  padding: '10px 16px',
-                  borderRadius: 8,
-                  backgroundColor: colors.secondary,
-                  color: COLORS.white,
-                  border: 'none',
-                  fontSize: 14,
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={loading}
-                style={{
-                  flex: 1,
-                  padding: '10px 16px',
-                  borderRadius: 8,
-                  backgroundColor: colors.primary,
-                  color: COLORS.white,
-                  border: 'none',
-                  fontSize: 14,
-                  fontWeight: '600',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.7 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                {loading ? (
-                  <div className="spinner" />
-                ) : (
-                  'Create Event'
-                )}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <Button
-              variant="secondary"
-              onPress={() => router.back()}
-              style={styles.footerButton}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onPress={handleSubmit}
-              loading={loading}
-              style={styles.footerButton}
-              disabled={loading}
-            >
-              Create Event
-            </Button>
-          </>
-        )}
+      <View style={[styles.buttonContainer, { backgroundColor: colors.background }]}>
+        <TouchableOpacity
+          style={[styles.buttonStyle, { backgroundColor: colors.surface }]}
+          onPress={() => router.back()}
+          disabled={loading}
+        >
+          <Text style={[styles.buttonTextStyle, { color: colors.bodyText }]}>Cancel</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.buttonStyle, { backgroundColor: colors.primary, opacity: loading ? 0.7 : 1 }]}
+          onPress={handleSubmit}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={[styles.buttonTextStyle, { color: COLORS.white }]}>Create Event</Text>
+          )}
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
@@ -506,47 +450,97 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    padding: 16,
   },
   form: {
-    padding: 20,
+    marginBottom: 60,
   },
   label: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '500',
     marginBottom: 8,
   },
   input: {
     height: 48,
     borderRadius: 8,
+    marginBottom: 16,
     paddingHorizontal: 16,
-    marginBottom: 20,
     fontSize: 16,
   },
   textArea: {
-    height: 100,
+    height: 120,
     borderRadius: 8,
+    marginBottom: 16,
     paddingHorizontal: 16,
-    paddingTop: 12,
-    marginBottom: 20,
     fontSize: 16,
     textAlignVertical: 'top',
+    padding: 10,
   },
   dateTimeContainer: {
-    flexDirection: 'row',
-    marginBottom: 20,
+    marginBottom: 24,
+    width: '100%',
   },
-  dateTimeButton: {
+  dateTimeRow: {
+    flexDirection: 'row',
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  durationOptionsContainer: {
+    flexDirection: 'row',
+    marginBottom: 24,
+  },
+  durationOption: {
     flex: 1,
-    height: 48,
-    borderRadius: 8,
+    padding: 12,
+    borderRadius: 24,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  durationText: {
+    fontWeight: '500',
+  },
+  customDurationContainer: {
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  cardButtonContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    marginRight: 10,
   },
-  dateTimeText: {
-    fontSize: 16,
+  cardButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    marginRight: 16,
+    borderRadius: 8,
+  },
+  buttonText: {
     marginLeft: 8,
+    fontWeight: '500',
+  },
+  buttonContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0, 
+    right: 0,
+    flexDirection: 'row',
+    padding: 16,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    gap: 16,
+  },
+  buttonStyle: {
+    flex: 1,
+    borderRadius: 8,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonTextStyle: {
+    fontSize: 16,
+    fontWeight: '500',
   },
   traditionsContainer: {
     flexDirection: 'row',
@@ -610,11 +604,6 @@ const styles = StyleSheet.create({
   durationButtonText: {
     fontSize: 14,
     fontWeight: '600',
-  },
-  customDurationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 10,
   },
   customDurationInput: {
     flex: 1,
