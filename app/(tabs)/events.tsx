@@ -18,7 +18,6 @@ import Button from '@/src/components/common/Button';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useFocusEffect } from '@react-navigation/native';
-import { createSolarEvents } from '@/app/events/create';
 
 // Event type definition
 interface MeditationEvent {
@@ -210,60 +209,6 @@ const DateHeader: React.FC<DateHeaderProps> = ({ date }) => {
   );
 };
 
-// Add this function above fetchEvents
-const checkAndCreateSolarEvents = async (): Promise<boolean> => {
-  try {
-    console.log('Checking for solar events...');
-    
-    // Get current date
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    
-    console.log('Checking for events between:', today.toISOString(), 'and', tomorrow.toISOString());
-    
-    // Check if we have any solar events for today
-    const { data, error } = await supabase
-      .from('meditation_events')
-      .select('id, title, start_time')
-      .or(`title.ilike.%Sunrise%,title.ilike.%Midday%,title.ilike.%Sunset%,title.ilike.%Midnight%`)
-      .gte('start_time', today.toISOString())
-      .lt('start_time', tomorrow.toISOString());
-    
-    if (error) {
-      console.error("Error checking for solar events:", error);
-      return false;
-    }
-    
-    if (!data || data.length < 4) {
-      console.log(`Found only ${data?.length || 0} solar events for today, creating new ones`);
-      console.log('Events found:', data?.map(e => e.title).join(', ') || 'none');
-      
-      try {
-        const success = await createSolarEvents();
-        if (success) {
-          console.log("Successfully created solar events");
-          return true;
-        } else {
-          console.error("Failed to create solar events");
-          return false;
-        }
-      } catch (createError) {
-        console.error("Error during solar event creation:", createError);
-        return false;
-      }
-    } else {
-      console.log(`Found ${data.length} solar events for today, no need to create new ones`);
-      console.log('Events found:', data.map(e => e.title).join(', '));
-      return true;
-    }
-  } catch (error) {
-    console.error("Error checking for solar events:", error);
-    return false;
-  }
-};
-
 export default function EventsScreen() {
   const { user } = useAuth();
   const router = useRouter();
@@ -279,10 +224,7 @@ export default function EventsScreen() {
       const now = new Date();
       console.log('Fetching events at:', now.toISOString());
       
-      // First, always check and create solar events if needed
-      await checkAndCreateSolarEvents();
-      
-      // Then fetch all events including the newly created ones
+      // Fetch all events
       const { data, error } = await supabase
         .from('meditation_events')
         .select('*')
@@ -306,8 +248,8 @@ export default function EventsScreen() {
         // Add virtual recurring flag for these special events
         return {
           ...event,
-          is_recurring: !!isSolarEvent,
-          recurrence_type: isSolarEvent ? 'daily' : null
+          is_recurring: !!isSolarEvent || !!event.is_recurring,
+          recurrence_type: isSolarEvent ? 'daily' : event.recurrence_type
         };
       });
 

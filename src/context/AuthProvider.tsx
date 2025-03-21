@@ -11,6 +11,7 @@ export interface UserProfile {
   display_name?: string | null;
   avatar_url?: string | null;
   created_at?: string;
+  is_admin?: boolean; 
   privacy_settings?: {
     locationSharingLevel: 'none' | 'country' | 'city' | 'precise';
     useAnonymousId: boolean;

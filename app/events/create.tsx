@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -9,19 +9,17 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
-  Modal,
   ActivityIndicator,
   Switch
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/context/AuthProvider';
-import { supabase, checkSupabaseConnection, ensureRecurringEventsSchema } from '@/src/api/supabase';
+import { supabase, checkSupabaseConnection } from '@/src/api/supabase';
 import { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
 import Button from '@/src/components/common/Button';
 import { COLORS } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
-import { UserProfile } from '@/src/context/AuthProvider';
 import SimpleDatePicker from '@/src/components/common/SimpleDatePicker';
 
 // Function to ensure proper permissions for guest users
@@ -52,140 +50,11 @@ const ensureGuestPermissions = async () => {
   }
 };
 
-// Function to create solar events that occur daily (sunrise, noon, sunset, midnight)
+// This stub function exists for compatibility but doesn't create solar events anymore
+// Solar events are now only created through the admin panel
 export const createSolarEvents = async (): Promise<boolean> => {
-  try {
-    console.log('Creating solar events');
-    
-    // Try to find an existing user to use as the creator for system events
-    let systemId = null;
-    
-    try {
-      // First try to get the current authenticated user
-      const { data: session } = await supabase.auth.getSession();
-      if (session?.session?.user?.id) {
-        systemId = session.session.user.id;
-        console.log('Using current authenticated user as system ID:', systemId);
-      } else {
-        // Try to get the first user from the system
-        const { data: users, error: userError } = await supabase
-          .from('users')
-          .select('id')
-          .limit(1);
-          
-        if (userError) {
-          console.error('Error fetching users:', userError);
-          // Use 'guest-user' as a final fallback
-          systemId = 'guest-user';
-          console.log('Using guest-user as system ID after error');
-        } else if (users && users.length > 0) {
-          systemId = users[0].id;
-          console.log('Using existing user as system ID:', systemId);
-        } else {
-          console.log('No users found, using guest-user as system ID');
-          systemId = 'guest-user';
-        }
-      }
-    } catch (error) {
-      console.error('Error finding user for system events:', error);
-      // Final fallback
-      systemId = 'guest-user';
-      console.log('Using guest-user as system ID after exception');
-    }
-    
-    // Get current date in user's timezone
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    console.log('Creating events based on date:', today.toISOString());
-    
-    // Define the four solar events with proper times
-    const solarEvents = [
-      {
-        title: "Daily Sunrise Meditation",
-        description: "Start your day with a peaceful sunrise meditation. This daily practice helps center your mind and prepare for the day ahead.",
-        start_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 6, 0, 0).toISOString(),
-        duration: 15,
-        tradition: 'universal',
-        created_by: systemId,
-        is_global: true,
-      },
-      {
-        title: "Midday Mindfulness",
-        description: "Take a break from your busy day to recenter and find clarity with this midday practice.",
-        start_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0).toISOString(),
-        duration: 10,
-        tradition: 'universal',
-        created_by: systemId,
-        is_global: true,
-      },
-      {
-        title: "Sunset Reflection",
-        description: "Wind down your day with a peaceful sunset meditation. Release the day's tensions and find tranquility.",
-        start_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 18, 0, 0).toISOString(),
-        duration: 20,
-        tradition: 'universal',
-        created_by: systemId,
-        is_global: true,
-      },
-      {
-        title: "Midnight Stillness",
-        description: "Experience the profound silence of late night meditation. Connect with your deeper self in this quiet practice.",
-        start_time: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0).toISOString(), 
-        duration: 15,
-        tradition: 'universal',
-        created_by: systemId,
-        is_global: true,
-      }
-    ];
-    
-    // Create the events in the database
-    try {
-      const { data, error } = await supabase
-        .from('meditation_events')
-        .insert(solarEvents)
-        .select();
-      
-      if (error) {
-        console.error('Error creating solar events:', error);
-        
-        // If error is related to created_by constraint, try once more with null
-        if (error.code === '23503' && error.message.includes('meditation_events_created_by_fkey')) {
-          console.log('Retrying with NULL for created_by field');
-          
-          // Set all created_by to null and try again
-          const nullEvents = solarEvents.map(event => ({
-            ...event,
-            created_by: null
-          }));
-          
-          const { data: retryData, error: retryError } = await supabase
-            .from('meditation_events')
-            .insert(nullEvents)
-            .select();
-            
-          if (retryError) {
-            console.error('Second attempt failed:', retryError);
-            return false;
-          }
-          
-          console.log(`Successfully created ${retryData?.length || 0} solar events on second attempt`);
-          return true;
-        }
-        
-        return false;
-      }
-      
-      console.log(`Successfully created ${data?.length || 0} solar events`);
-      return true;
-    } catch (insertError) {
-      console.error('Exception during database insertion:', insertError);
-      return false;
-    }
-  } catch (error) {
-    console.error('Exception in createSolarEvents:', error);
-    return false;
-  }
+  console.log('Solar event creation moved to admin panel');
+  return true;
 };
 
 export default function CreateEventScreen() {
@@ -196,8 +65,6 @@ export default function CreateEventScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
   const [duration, setDuration] = useState('20');
   const [isCustomDuration, setIsCustomDuration] = useState(false);
   const [tradition, setTradition] = useState(FAITH_TRADITIONS[0].id);
@@ -291,6 +158,7 @@ export default function CreateEventScreen() {
         tradition,
         created_by: createdBy,
         is_global: isGlobal,
+        is_system: false, // Mark as user-created event
         // Add recurring event properties
         is_recurring: isRecurring,
         recurrence_type: isRecurring ? recurrenceType : null,
@@ -575,40 +443,6 @@ export default function CreateEventScreen() {
       </>
     );
   };
-
-  // Call createSolarEvents when the component mounts
-  useEffect(() => {
-    // Check if we should create solar events
-    const checkAndCreateSolarEvents = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('app_settings')
-          .select('value')
-          .eq('key', 'solar_events_created')
-          .single();
-        
-        if (error || !data || data.value !== 'true') {
-          // Create solar events
-          const success = await createSolarEvents();
-          
-          if (success) {
-            // Update the setting to indicate solar events have been created
-            await supabase
-              .from('app_settings')
-              .upsert([
-                { key: 'solar_events_created', value: 'true' }
-              ]);
-          }
-        }
-      } catch (error) {
-        console.error('Error checking app settings:', error);
-        // Try to create the events anyway
-        await createSolarEvents();
-      }
-    };
-    
-    checkAndCreateSolarEvents();
-  }, []);
 
   return (
     <KeyboardAvoidingView 
@@ -912,4 +746,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '400',
   },
-}); 
+});

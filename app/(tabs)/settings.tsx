@@ -17,14 +17,22 @@ import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 import Button from '@/src/components/common/Button';
 import type { UserProfile } from '@/src/context/AuthProvider';
 
+// Improved type guard function
+const isUserProfile = (user: null | boolean | UserProfile): user is UserProfile => {
+  return user !== null && typeof user !== 'boolean' && 'id' in user;
+};
+
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const { isDark, toggleTheme, colors } = useTheme();
 
-  // Type guard function
-  const isUserProfile = (user: null | boolean | UserProfile): user is UserProfile => {
-    return user !== null && typeof user !== 'boolean';
-  };
+  console.log("User in settings:", user);
+
+  // Admin check
+  const isAdmin = isUserProfile(user) && 
+    (user.email === 'timhart.sound@gmail.com' || user.is_admin === true);
+
+  console.log("Is admin:", isAdmin, "User email:", isUserProfile(user) ? user.email : "no email");
 
   const handleSignOut = async () => {
     Alert.alert(
@@ -40,7 +48,6 @@ export default function SettingsScreen() {
               console.log('Signing out...');
               await signOut();
               console.log('Signed out successfully');
-              // Use replace to prevent going back to authenticated screens
               router.replace('/(auth)/sign-in');
             } catch (error: any) {
               console.error('Sign out error:', error);
@@ -63,11 +70,8 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // First sign out
               await signOut();
-              // Then navigate to sign in
               router.replace('/(auth)/sign-in');
-              // Show confirmation
               Alert.alert('Account Deleted', 'Your account has been successfully deleted.');
             } catch (error: any) {
               console.error('Delete account error:', error);
@@ -77,6 +81,27 @@ export default function SettingsScreen() {
         }
       ]
     );
+  };
+
+  // Updated navigation functions
+  const navigateToAdmin = () => {
+    console.log("Navigating to admin...");
+    try {
+      router.push('/admin');
+    } catch (error) {
+      console.error("Navigation error:", error);
+      Alert.alert("Navigation Error", "Could not navigate to admin panel: " + String(error));
+    }
+  };
+  
+  const navigateToAdminEvents = () => {
+    console.log("Navigating to admin events...");
+    try {
+      router.push('/admin/events');
+    } catch (error) {
+      console.error("Navigation error:", error);
+      Alert.alert("Navigation Error", "Could not navigate to events admin: " + String(error));
+    }
   };
 
   return (
@@ -114,6 +139,39 @@ export default function SettingsScreen() {
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.gray} />
         </TouchableOpacity>
+
+        {/* Admin Panel (only visible to admin users) */}
+        {isAdmin && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.primary }]}>Administration</Text>
+            
+            <View style={[styles.settingsCard, { backgroundColor: colors.surface }]}>
+              <TouchableOpacity 
+                style={styles.settingsRow}
+                onPress={navigateToAdmin}
+              >
+                <View style={styles.settingsIconContainer}>
+                  <Ionicons name="construct" size={20} color={colors.primary} />
+                </View>
+                <Text style={[styles.settingsLabel, { color: colors.bodyText }]}>Admin Dashboard</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.gray} />
+              </TouchableOpacity>
+              
+              <View style={[styles.separator, { backgroundColor: colors.lightGray }]} />
+              
+              <TouchableOpacity 
+                style={styles.settingsRow}
+                onPress={navigateToAdminEvents}
+              >
+                <View style={styles.settingsIconContainer}>
+                  <Ionicons name="calendar" size={20} color={colors.primary} />
+                </View>
+                <Text style={[styles.settingsLabel, { color: colors.bodyText }]}>Manage System Events</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.gray} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* Settings Sections */}
         <View style={styles.section}>
@@ -242,6 +300,28 @@ export default function SettingsScreen() {
               </View>
               <Text style={[styles.settingsLabel, { color: colors.bodyText }]}>About SyncMeditate</Text>
               <Text style={[styles.versionText, { color: colors.gray }]}>v1.0.0</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Debug Info */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.primary }]}>Debug Info</Text>
+          
+          <View style={[styles.settingsCard, { backgroundColor: colors.surface }]}>
+            <View style={styles.settingsRow}>
+              <Text style={{ color: colors.bodyText, fontSize: 12 }}>
+                Admin email: timhart.sound@gmailc.om
+              </Text>
+            </View>
+            <View style={[styles.separator, { backgroundColor: colors.lightGray }]} />
+            <TouchableOpacity 
+              style={styles.settingsRow}
+              onPress={() => Alert.alert("User Info", JSON.stringify(user, null, 2))}
+            >
+              <Text style={{ color: colors.bodyText, fontSize: 12 }}>
+                Show User Object
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
