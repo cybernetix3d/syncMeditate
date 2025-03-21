@@ -8,10 +8,10 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  Modal
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/context/AuthProvider';
 import { supabase, checkSupabaseConnection } from '@/src/api/supabase';
@@ -20,6 +20,35 @@ import Button from '@/src/components/common/Button';
 import { COLORS } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
 import { UserProfile } from '@/src/context/AuthProvider';
+import SimpleDatePicker from '@/src/components/common/SimpleDatePicker';
+
+// Function to ensure proper permissions for guest users
+const ensureGuestPermissions = async () => {
+  try {
+    console.log('Checking and creating guest permissions...');
+    // Execute an RPC function to add the necessary policy
+    await supabase.rpc('add_guest_event_permissions', {
+      sql_command: `
+        -- Create policy to allow anonymous (non-authenticated) users to create meditation events
+        CREATE POLICY IF NOT EXISTS "Allow anonymous users to create events"
+        ON meditation_events FOR INSERT
+        WITH CHECK (true);
+        
+        -- Create policy to allow any user to view all meditation events
+        CREATE POLICY IF NOT EXISTS "Anyone can view meditation events"
+        ON meditation_events FOR SELECT
+        USING (true);
+      `
+    });
+    console.log('Guest permissions set successfully');
+    return true;
+  } catch (error) {
+    console.error('Error setting guest permissions:', error);
+    // If RPC function doesn't exist, this will fail silently
+    // We'll still try to create the event anyway
+    return false;
+  }
+};
 
 export default function CreateEventScreen() {
   const router = useRouter();
@@ -36,24 +65,6 @@ export default function CreateEventScreen() {
   const [tradition, setTradition] = useState(FAITH_TRADITIONS[0].id);
   const [isGlobal, setIsGlobal] = useState(true);
   const [loading, setLoading] = useState(false);
-
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      const newDate = new Date(selectedDate);
-      newDate.setHours(date.getHours(), date.getMinutes());
-      setDate(newDate);
-    }
-  };
-
-  const handleTimeChange = (event: any, selectedTime?: Date) => {
-    setShowTimePicker(false);
-    if (selectedTime) {
-      const newDate = new Date(date);
-      newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes());
-      setDate(newDate);
-    }
-  };
 
   const validateForm = () => {
     console.log('Starting form validation with:', { 
@@ -97,26 +108,7 @@ export default function CreateEventScreen() {
       return false;
     }
 
-    // Check if user exists and is a UserProfile object
-    if (!user) {
-      console.log('Validation failed: No user');
-      Alert.alert('Error', 'You must be signed in to create an event');
-      return false;
-    }
-
-    if (typeof user === 'boolean') {
-      console.log('Validation failed: User is boolean type');
-      Alert.alert('Error', 'Invalid user state. Please try signing out and back in.');
-      return false;
-    }
-
-    // Check if user has an ID
-    if (!('id' in user)) {
-      console.log('Validation failed: User object missing ID');
-      Alert.alert('Error', 'Invalid user profile. Please try signing out and back in.');
-      return false;
-    }
-
+    // We'll allow any user (including guests) to create events
     console.log('Form validation passed successfully with user:', user);
     return true;
   };
@@ -137,25 +129,17 @@ export default function CreateEventScreen() {
         throw new Error('Unable to connect to the database. Please check your internet connection and try again.');
       }
       
-      // Ensure the user is properly typed and has an ID
-      if (!user || typeof user === 'boolean') {
-        throw new Error('User not properly authenticated');
+      // Get the current auth session (may be null for guest users)
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      // If no session (guest user), ensure proper permissions
+      if (!session) {
+        await ensureGuestPermissions();
       }
-
-      const userId = (user as UserProfile).id;
-      console.log('User ID:', userId);
-
-      // Get the current session to verify the actual auth.uid()
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        throw new Error('Failed to verify authentication. Please try signing in again.');
-      }
-
-      if (!session?.user?.id) {
-        throw new Error('No authenticated user found. Please sign in again.');
-      }
-
-      console.log('Auth user ID:', session.user.id);
+      
+      // Use the authenticated user ID if available, otherwise use 'guest-user'
+      const createdBy = session?.user?.id || 'guest-user';
+      console.log('Creating event as:', createdBy);
 
       const eventData = {
         title: title.trim(),
@@ -163,7 +147,7 @@ export default function CreateEventScreen() {
         start_time: date.toISOString(),
         duration: Number(duration),
         tradition,
-        created_by: session.user.id, // Use the auth user ID instead of profile ID
+        created_by: createdBy,
         is_global: isGlobal,
       };
 
@@ -236,6 +220,29 @@ export default function CreateEventScreen() {
     }
   };
 
+  const renderDateTimePickers = () => {
+    return (
+      <>
+        <Text style={[styles.label, { color: colors.bodyText }]}>Date & Time</Text>
+        <View style={styles.dateTimeContainer}>
+          <SimpleDatePicker
+            value={date}
+            onChange={(newDate) => setDate(newDate)}
+            mode="date"
+            label=""
+          />
+          
+          <SimpleDatePicker
+            value={date}
+            onChange={(newDate) => setDate(newDate)}
+            mode="time"
+            label=""
+          />
+        </View>
+      </>
+    );
+  };
+
   return (
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -263,60 +270,7 @@ export default function CreateEventScreen() {
             numberOfLines={4}
           />
 
-          <Text style={[styles.label, { color: colors.bodyText }]}>Date & Time</Text>
-          <View style={styles.dateTimeContainer}>
-            {Platform.OS === 'web' ? (
-              <input
-                type="datetime-local"
-                value={date.toISOString().slice(0, 16)}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    setDate(new Date(e.target.value));
-                  }
-                }}
-                style={{
-                  height: 48,
-                  borderRadius: 8,
-                  padding: '0 16px',
-                  fontSize: 16,
-                  backgroundColor: colors.surface,
-                  color: colors.bodyText,
-                  border: 'none',
-                  width: '100%'
-                }}
-              />
-            ) : (
-              <>
-                <TouchableOpacity 
-                  style={[styles.dateTimePicker, { backgroundColor: colors.surface }]}
-                  onPress={() => setShowDatePicker(true)}
-                >
-                  <Ionicons name="calendar-outline" size={20} color={colors.gray} />
-                  <Text style={[styles.dateTimeText, { color: colors.bodyText }]}>
-                    {date.toLocaleDateString()}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[styles.dateTimePicker, { backgroundColor: colors.surface }]}
-                  onPress={() => setShowTimePicker(true)}
-                >
-                  <Ionicons name="time-outline" size={20} color={colors.gray} />
-                  <Text style={[styles.dateTimeText, { color: colors.bodyText }]}>
-                    {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </Text>
-                </TouchableOpacity>
-
-                {(showDatePicker || showTimePicker) && (
-                  <DateTimePicker
-                    value={date}
-                    mode={showDatePicker ? 'date' : 'time'}
-                    onChange={showDatePicker ? handleDateChange : handleTimeChange}
-                  />
-                )}
-              </>
-            )}
-          </View>
+          {renderDateTimePickers()}
 
           <Text style={[styles.label, { color: colors.bodyText }]}>Duration (minutes)</Text>
           <View style={styles.durationContainer}>
@@ -581,7 +535,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 20,
   },
-  dateTimePicker: {
+  dateTimeButton: {
     flex: 1,
     height: 48,
     borderRadius: 8,

@@ -225,7 +225,12 @@ export default function HomeScreen() {
         const { data: completionsWithEvents, error: completionsWithEventsError } = await supabase
           .from('meditation_completions')
           .select(`
-            *,
+            id,
+            user_id,
+            event_id,
+            completed_at,
+            duration,
+            completed,
             meditation_events (
               *,
               meditation_participants (
@@ -247,7 +252,7 @@ export default function HomeScreen() {
         // Also get quick meditations (those without event_id)
         const { data: quickMeditations, error: quickMeditationsError } = await supabase
           .from('meditation_completions')
-          .select('*')
+          .select('id, user_id, event_id, completed_at, duration, completed')
           .eq('user_id', user.id)
           .eq('completed', true)
           .is('event_id', null)
@@ -255,7 +260,7 @@ export default function HomeScreen() {
           .limit(5);
           
         if (quickMeditationsError) {
-          console.error('Error fetching quick meditations:', quickMeditationsError);
+          console.error('Error fetching quick sessions from meditation_completions:', quickMeditationsError);
         } else {
           console.log('Quick meditations found:', quickMeditations?.length || 0);
         }
@@ -285,30 +290,62 @@ export default function HomeScreen() {
         }
         
         // Convert history entries to the same format as completions
-        const historyCompletions = (historyEntries || []).map((history: MeditationHistory) => ({
-          id: history.id,
-          user_id: history.user_id,
-          event_id: history.event_id,
-          completed_at: history.date,
-          duration: history.duration,
-          completed: true,
-          meditation_type: 'user_history' as 'quick' | 'global' | 'scheduled' | 'user_history',
-          meditation_events: null,
-          notes: history.notes,
-          tradition: history.tradition
-        }));
+        const historyCompletions = (historyEntries || []).map((history: MeditationHistory) => {
+          const completion: MeditationCompletion = {
+            id: history.id,
+            user_id: history.user_id,
+            event_id: history.event_id,
+            completed_at: history.date,
+            duration: history.duration,
+            completed: true,
+            meditation_type: 'user_history',
+            meditation_events: null,
+            notes: history.notes,
+            tradition: history.tradition
+          };
+          return completion;
+        });
+        
+        // Process quick meditations to add type
+        const processedQuickMeditations = (quickMeditations || []).map(qm => {
+          const completion: MeditationCompletion = {
+            ...qm,
+            meditation_events: null,
+            meditation_type: 'quick'
+          };
+          return completion;
+        });
+        
+        // Process scheduled meditations to add type
+        const processedScheduledMeditations = (completionsWithEvents || []).map(ce => {
+          // First check if meditation_events exists and is an object
+          const meditationEvents = ce.meditation_events && typeof ce.meditation_events === 'object' 
+            ? ce.meditation_events as unknown as (MeditationEvent & {
+                meditation_participants?: Array<{
+                  id: string;
+                  active: boolean;
+                }>;
+              }) 
+            : null;
+          
+          const isGlobal = meditationEvents && 'is_global' in meditationEvents && meditationEvents.is_global === true;
+          
+          const completion: MeditationCompletion = {
+            ...ce,
+            meditation_type: isGlobal ? 'global' : 'scheduled',
+            meditation_events: meditationEvents
+          };
+          return completion;
+        });
         
         // Combine all types of completions
-        const allCompletions = [
-          ...(completionsWithEvents || []),
-          ...(quickMeditations || []).map(qm => ({
-            ...qm,
-            meditation_events: null
-          })),
+        const allCompletions: MeditationCompletion[] = [
+          ...processedScheduledMeditations,
+          ...processedQuickMeditations,
           ...historyCompletions
         ].sort((a, b) => {
-          const dateA = new Date(a.completed_at || a.date || Date.now()).getTime();
-          const dateB = new Date(b.completed_at || b.date || Date.now()).getTime();
+          const dateA = new Date(a.completed_at || Date.now()).getTime();
+          const dateB = new Date(b.completed_at || Date.now()).getTime();
           return dateB - dateA;
         }).slice(0, 5);
         
@@ -401,8 +438,10 @@ export default function HomeScreen() {
       {isUserProfile(user) && recentEvents.length > 0 ? (
         recentEvents.map((completion) => {
           const event = completion.meditation_events;
-          const isQuickMeditation = !event && completion.meditation_type === 'quick';
-          const isHistoryEntry = completion.meditation_type === 'user_history';
+          // Check for meditation_type, but don't require it (backward compatibility)
+          const meditationType = completion.meditation_type || (event ? (event.is_global ? 'global' : 'scheduled') : 'quick');
+          const isQuickMeditation = meditationType === 'quick';
+          const isHistoryEntry = meditationType === 'user_history';
           const completedDate = new Date(completion.completed_at || Date.now());
           const durationMinutes = Math.floor(completion.duration / 60);
           const remainingSeconds = completion.duration % 60;
@@ -460,24 +499,22 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                 )}
-                {completion.meditation_type && (
-                  <View style={styles.cardDetailItem}>
-                    <Ionicons 
-                      name={completion.meditation_type === 'quick' ? "flash-outline" : 
-                            completion.meditation_type === 'global' ? "globe-outline" : 
-                            completion.meditation_type === 'user_history' ? "book-outline" :
-                            "calendar-outline"} 
-                      size={16} 
-                      color={COLORS.gray} 
-                    />
-                    <Text style={styles.cardDetailText}>
-                      {completion.meditation_type === 'quick' ? "Quick" : 
-                       completion.meditation_type === 'global' ? "Global" : 
-                       completion.meditation_type === 'user_history' ? "History" :
-                       "Scheduled"}
-                    </Text>
-                  </View>
-                )}
+                <View style={styles.cardDetailItem}>
+                  <Ionicons 
+                    name={meditationType === 'quick' ? "flash-outline" : 
+                          meditationType === 'global' ? "globe-outline" : 
+                          meditationType === 'user_history' ? "book-outline" :
+                          "calendar-outline"} 
+                    size={16} 
+                    color={COLORS.gray} 
+                  />
+                  <Text style={styles.cardDetailText}>
+                    {meditationType === 'quick' ? "Quick" : 
+                     meditationType === 'global' ? "Global" : 
+                     meditationType === 'user_history' ? "History" :
+                     "Scheduled"}
+                  </Text>
+                </View>
                 <View style={[styles.completedBadge]}>
                   <Text style={styles.completedText}>Completed</Text>
                   <Ionicons name="checkmark" size={14} color={COLORS.secondary} />

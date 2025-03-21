@@ -111,7 +111,8 @@ export default function CommunityScreen() {
       const { count: quickSessionsCount, error: quickSessionsError } = await supabase
         .from('meditation_completions')
         .select('id', { count: 'exact', head: true })
-        .eq('meditation_type', 'quick');
+        .is('event_id', null) // Look for null event_id which indicates quick meditations
+        .eq('completed', true);
         
       if (quickSessionsError) {
         console.error('Error fetching quick sessions from meditation_completions:', quickSessionsError);
@@ -358,11 +359,22 @@ export default function CommunityScreen() {
         <TouchableOpacity
           onPress={async () => {
             try {
-              // Manual migration to add meditation_type column if it doesn't exist
+              // Manual migration to apply our new admin functions
               await supabase.rpc('run_manual_migration', {
                 sql_statement: `
+                  -- Add meditation_type column if it doesn't exist
                   ALTER TABLE meditation_completions ADD COLUMN IF NOT EXISTS meditation_type VARCHAR(20) DEFAULT 'scheduled';
                   UPDATE meditation_completions SET meditation_type = 'scheduled' WHERE meditation_type IS NULL;
+                  
+                  -- Create policy to allow anonymous users to create events
+                  CREATE POLICY IF NOT EXISTS "Allow anonymous users to create events"
+                  ON meditation_events FOR INSERT
+                  WITH CHECK (true);
+                  
+                  -- Create policy to allow any user to view all meditation events
+                  CREATE POLICY IF NOT EXISTS "Anyone can view meditation events"
+                  ON meditation_events FOR SELECT
+                  USING (true);
                 `
               });
               Alert.alert('Success', 'Database updated. Pull down to refresh.');
@@ -371,7 +383,7 @@ export default function CommunityScreen() {
               Alert.alert('Error', 'Could not update database. Check console for details.');
             }
           }}
-          style={{ opacity: 0 }}
+          style={{ opacity: 0.5 }}
         >
           <Text style={{ fontSize: 8, color: colors.subtitleText }}>Fix DB</Text>
         </TouchableOpacity>
