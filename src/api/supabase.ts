@@ -157,56 +157,22 @@ export const fixDatabaseSchema = async () => {
     // Add meditation_type column to meditation_completions if it doesn't exist
     const { error: columnError } = await supabase.rpc('exec_sql', {
       query: `
-        DO $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'meditation_completions' 
-            AND column_name = 'meditation_type'
-          ) THEN
-            ALTER TABLE meditation_completions 
-            ADD COLUMN meditation_type TEXT DEFAULT 'quick';
-            
-            -- Update existing records
-            UPDATE meditation_completions
-            SET meditation_type = CASE
-              WHEN event_id IS NULL THEN 'quick'
-              ELSE 'scheduled'
-            END;
-          END IF;
+        ALTER TABLE meditation_completions 
+        ADD COLUMN IF NOT EXISTS meditation_type TEXT DEFAULT 'quick';
+        
+        -- Update existing records
+        UPDATE meditation_completions
+        SET meditation_type = CASE
+          WHEN event_id IS NULL THEN 'quick'
+          ELSE 'scheduled'
         END
-        $$;
+        WHERE meditation_type IS NULL;
       `
     });
 
     if (columnError) {
       console.error('Error adding meditation_type column:', columnError);
       throw columnError;
-    }
-    
-    // Create policy for anonymous users to record meditation completions
-    const { error: policyError } = await supabase.rpc('exec_sql', {
-      query: `
-        DO $$
-        BEGIN
-          -- Check if policy exists
-          IF NOT EXISTS (
-            SELECT 1 FROM pg_policies 
-            WHERE tablename = 'meditation_completions' 
-            AND policyname = 'Enable anonymous insert'
-          ) THEN
-            -- Create policy allowing anonymous inserts
-            CREATE POLICY "Enable anonymous insert" ON meditation_completions
-              FOR INSERT WITH CHECK (true);
-          END IF;
-        END
-        $$;
-      `
-    });
-
-    if (policyError) {
-      console.error('Error creating anonymous policy:', policyError);
-      throw policyError;
     }
 
     console.log('Database schema fixed successfully');
@@ -218,5 +184,41 @@ export const fixDatabaseSchema = async () => {
       message: 'Failed to update database schema',
       error: err 
     };
+  }
+};
+
+// Helper function to fix meditation permissions issues
+export const fixMeditationPermissions = async () => {
+  try {
+    console.log('Attempting to fix meditation table permissions...');
+    
+    // Create RLS policy for anonymous users to insert
+    const { error: policyError } = await supabase.rpc('exec_sql', {
+      query: `
+        -- Enable anonymous inserts for meditation_completions
+        CREATE POLICY IF NOT EXISTS "Allow anonymous inserts" 
+        ON meditation_completions FOR INSERT 
+        WITH CHECK (true);
+        
+        -- Fix permissions for authenticated users
+        CREATE POLICY IF NOT EXISTS "Allow authenticated users" 
+        ON meditation_completions FOR ALL 
+        USING (auth.uid() = user_id);
+        
+        -- Enable RLS but make sure policies are in place first
+        ALTER TABLE meditation_completions ENABLE ROW LEVEL SECURITY;
+      `
+    });
+
+    if (policyError) {
+      console.error('Error fixing meditation permissions:', policyError);
+      return { success: false, error: policyError };
+    }
+
+    console.log('Permissions fixed successfully');
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to fix permissions:', err);
+    return { success: false, error: err };
   }
 };

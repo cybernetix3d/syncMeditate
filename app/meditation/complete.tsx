@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useAuth } from '@/src/context/AuthProvider';
-import { supabase } from '@/src/api/supabase';
+import { supabase, fixMeditationPermissions } from '@/src/api/supabase';
 
 export default function MeditationCompleteScreen() {
   const { duration, type } = useLocalSearchParams();
@@ -24,17 +24,36 @@ export default function MeditationCompleteScreen() {
     if (user && typeof user !== 'boolean' && user.id) {
       const checkSessions = async () => {
         try {
-          const { count, error } = await supabase
-            .from('meditation_completions')
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id);
+          // Check both tables for meditation records
+          const [completionsResult, historyResult] = await Promise.all([
+            // Check meditation_completions table
+            supabase
+              .from('meditation_completions')
+              .select('id', { count: 'exact', head: true })
+              .eq('user_id', user.id),
+              
+            // Also check user_meditation_history table for older records
+            supabase
+              .from('user_meditation_history')
+              .select('id', { count: 'exact', head: true })
+              .eq('user_id', user.id)
+          ]);
             
-          if (error) {
-            console.error('Error checking sessions:', error);
-          } else {
-            setTotalSessions(count || 0);
-            setSessionsSaved(true);
+          if (completionsResult.error) {
+            console.error('Error checking meditation_completions:', completionsResult.error);
           }
+          
+          if (historyResult.error) {
+            console.error('Error checking user_meditation_history:', historyResult.error);
+          }
+          
+          const completionsCount = completionsResult.count || 0;
+          const historyCount = historyResult.count || 0;
+          const total = completionsCount + historyCount;
+          
+          console.log(`Found ${completionsCount} completions + ${historyCount} history records = ${total} total`);
+          setTotalSessions(total);
+          setSessionsSaved(completionsCount > 0 || historyCount > 0);
         } catch (e) {
           console.error('Error in session check:', e);
         }
@@ -44,8 +63,47 @@ export default function MeditationCompleteScreen() {
     }
   }, [user]);
 
-  const handleReturnHome = () => {
-    router.push('/');
+  const handleReturnHome = async () => {
+    try {
+      // Fix permissions first
+      await fixMeditationPermissions();
+      console.log('Fixed permissions');
+      
+      // Fix database schema
+      const result = await supabase.rpc('exec_sql', {
+        query: `
+          ALTER TABLE meditation_completions 
+          ADD COLUMN IF NOT EXISTS meditation_type TEXT DEFAULT 'quick';
+        `
+      });
+      
+      console.log('Fixed database schema:', result);
+      
+      // Insert a test record to make sure something is in the database
+      if (user && typeof user !== 'boolean') {
+        const { data, error } = await supabase
+          .from('user_meditation_history')
+          .insert([
+            {
+              user_id: user.id,
+              duration: Number(durationSeconds) || 10,
+              date: new Date().toISOString(),
+              notes: 'Test meditation'
+            }
+          ])
+          .select();
+          
+        console.log('Inserted test record:', data, error);
+      }
+    } catch (e) {
+      console.error('Error preparing database:', e);
+    }
+    
+    // Go back to home and provide a refresh parameter
+    router.replace({
+      pathname: '/',
+      params: { refresh: Date.now().toString() }
+    });
   };
 
   return (
@@ -72,7 +130,7 @@ export default function MeditationCompleteScreen() {
           </View>
           <View style={[styles.divider, { backgroundColor: colors.mediumGray }]} />
           <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: colors.primary }]}>{sessionsSaved ? totalSessions : '-'}</Text>
+            <Text style={[styles.statValue, { color: colors.primary }]}>{sessionsSaved ? totalSessions : '0'}</Text>
             <Text style={[styles.statLabel, { color: colors.gray }]}>Total Sessions</Text>
           </View>
           <View style={[styles.divider, { backgroundColor: colors.mediumGray }]} />

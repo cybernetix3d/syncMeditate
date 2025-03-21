@@ -8,7 +8,7 @@ import {
   RefreshControl,
   ActivityIndicator 
 } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+import { Link, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/context/AuthProvider';
 import { useMeditation } from '@/src/context/MeditationProvider';
@@ -136,6 +136,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const { currentEvent } = useMeditation();
   const { colors } = useTheme();
+  const { refresh } = useLocalSearchParams();
 
   interface MeditationEvent {
     id: string;
@@ -188,10 +189,51 @@ export default function HomeScreen() {
   const [recentEvents, setRecentEvents] = useState<MeditationCompletion[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [forceRefresh, setForceRefresh] = useState(0);
 
   const fetchMeditationData = async () => {
     try {
+      console.log("FETCHING MEDITATION DATA", new Date().toISOString());
       setLoading(true);
+      
+      if (isUserProfile(user)) {
+        // First try a simple direct query to get raw history data
+        const { data: rawHistory, error: rawHistoryError } = await supabase
+          .from('user_meditation_history')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('date', { ascending: false });
+          
+        console.log("RAW MEDITATION HISTORY:", 
+          rawHistory ? `Found ${rawHistory.length} entries` : 'No entries found', 
+          rawHistoryError);
+        
+        if (rawHistory && rawHistory.length > 0) {
+          // Convert these directly to the right format
+          const historyCompletions = rawHistory.map((history: MeditationHistory) => {
+            const completion: MeditationCompletion = {
+              id: history.id,
+              user_id: history.user_id,
+              event_id: history.event_id,
+              completed_at: history.date,
+              duration: history.duration,
+              completed: true,
+              meditation_type: 'user_history',
+              meditation_events: null,
+              notes: history.notes,
+              tradition: history.tradition
+            };
+            return completion;
+          });
+          
+          // Just use history for now to debug
+          setRecentEvents(historyCompletions.slice(0, 10));
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
+      
       const now = new Date();
       
       // Get all events with participant counts
@@ -347,7 +389,17 @@ export default function HomeScreen() {
           const dateA = new Date(a.completed_at || Date.now()).getTime();
           const dateB = new Date(b.completed_at || Date.now()).getTime();
           return dateB - dateA;
-        }).slice(0, 5);
+        }).slice(0, 10);
+        
+        // Log for debugging
+        console.log('Final combined meditations:', 
+          allCompletions.map(c => ({
+            id: c.id,
+            type: c.meditation_type,
+            date: c.completed_at,
+            duration: c.duration
+          }))
+        );
         
         setRecentEvents(allCompletions);
       }
@@ -361,10 +413,12 @@ export default function HomeScreen() {
 
   useEffect(() => {
     fetchMeditationData();
-  }, [user]);
+  }, [user, refresh, forceRefresh]);
 
   const onRefresh = () => {
     setRefreshing(true);
+    // Increment forceRefresh to trigger a re-fetch
+    setForceRefresh(prev => prev + 1);
     fetchMeditationData();
   };
 
@@ -435,110 +489,153 @@ export default function HomeScreen() {
   const renderRecentMeditationsSection = () => (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Your Recent Meditations</Text>
-      {isUserProfile(user) && recentEvents.length > 0 ? (
-        recentEvents.map((completion) => {
-          const event = completion.meditation_events;
-          // Check for meditation_type, but don't require it (backward compatibility)
-          const meditationType = completion.meditation_type || (event ? (event.is_global ? 'global' : 'scheduled') : 'quick');
-          const isQuickMeditation = meditationType === 'quick';
-          const isHistoryEntry = meditationType === 'user_history';
-          const completedDate = new Date(completion.completed_at || Date.now());
-          const durationMinutes = Math.floor(completion.duration / 60);
-          const remainingSeconds = completion.duration % 60;
-          const formattedDuration = `${durationMinutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+      {isUserProfile(user) && (
+        <>
+          {/* Debug info - show counts */}
+          <View style={{ marginBottom: 10, padding: 10, backgroundColor: colors.surface, borderRadius: 8 }}>
+            <Text style={{ color: colors.bodyText }}>History entries found: {recentEvents.length}</Text>
+            <Text style={{ color: colors.bodyText, marginVertical: 5 }}>
+              Types: {recentEvents.map(e => e.meditation_type || 'unknown').join(', ')}
+            </Text>
+            <TouchableOpacity 
+              onPress={() => {
+                console.log('Manual refresh clicked');
+                setForceRefresh(prev => prev + 1);
+              }}
+              style={{ 
+                backgroundColor: colors.primary, 
+                padding: 8, 
+                borderRadius: 4, 
+                alignItems: 'center',
+                marginTop: 5 
+              }}
+            >
+              <Text style={{ color: '#fff' }}>Force Refresh Data</Text>
+            </TouchableOpacity>
+          </View>
           
-          let iconName: any = "checkmark-circle";
-          let iconColor = COLORS.pastel2;
-          let backgroundColor = COLORS.secondary;
-          
-          if (isQuickMeditation) {
-            iconName = "flash";
-            iconColor = COLORS.primary;
-            backgroundColor = COLORS.pastel1;
-          } else if (isHistoryEntry) {
-            iconName = "book";
-            iconColor = COLORS.primary;
-            backgroundColor = COLORS.pastel3;
-          }
-          
-          return (
-            <View key={completion.id} style={styles.completedMeditationCard}>
-              <View style={styles.cardHeader}>
-                <View style={[styles.traditionIcon, { backgroundColor }]}>
-                  <Ionicons name={iconName} size={20} color={iconColor} />
-                </View>
-                <View style={styles.cardTitleContainer}>
-                  <Text style={styles.cardTitle}>
-                    {isQuickMeditation ? 
-                      `Quick ${durationMinutes}-Minute Meditation` : 
-                      isHistoryEntry ?
-                      `${durationMinutes}-Minute Meditation` :
-                      (event?.title || 'Meditation Session')}
-                  </Text>
-                  <Text style={styles.cardSubtitle}>
-                    {completedDate.toLocaleString([], {
-                      weekday: 'short',
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.cardFooter}>
-                <View style={styles.cardDetailItem}>
-                  <Ionicons name="time-outline" size={16} color={COLORS.gray} />
-                  <Text style={styles.cardDetailText}>{formattedDuration}</Text>
-                </View>
-                {(event?.tradition || completion.tradition) && (
-                  <View style={styles.cardDetailItem}>
-                    <Ionicons name="leaf-outline" size={16} color={COLORS.gray} />
-                    <Text style={styles.cardDetailText}>
-                      {FAITH_TRADITIONS.find(t => t.id === (event?.tradition || completion.tradition))?.name || 'Secular'}
-                    </Text>
+          {recentEvents.length > 0 ? (
+            recentEvents.map((completion) => {
+              const event = completion.meditation_events;
+              const meditationType = completion.meditation_type || (event ? (event.is_global ? 'global' : 'scheduled') : 'quick');
+              const isQuickMeditation = meditationType === 'quick';
+              const isHistoryEntry = meditationType === 'user_history';
+              const completedDate = new Date(completion.completed_at || Date.now());
+              
+              // Format duration based on whether it's in seconds or minutes
+              let durationMinutes = Math.round(completion.duration / 60);
+              let formattedDuration;
+              
+              // If duration is very small, it's likely already in minutes
+              if (completion.duration < 100 && isHistoryEntry) {
+                // This is likely already in minutes
+                durationMinutes = completion.duration;
+                formattedDuration = `${durationMinutes} min`;
+              } else {
+                // Duration is in seconds
+                durationMinutes = Math.floor(completion.duration / 60);
+                const remainingSeconds = completion.duration % 60;
+                formattedDuration = remainingSeconds > 0 ? 
+                  `${durationMinutes}:${remainingSeconds.toString().padStart(2, '0')}` : 
+                  `${durationMinutes} min`;
+              }
+              
+              let iconName: any = "checkmark-circle";
+              let iconColor = COLORS.pastel2;
+              let backgroundColor = COLORS.secondary;
+              
+              if (isQuickMeditation) {
+                iconName = "flash";
+                iconColor = COLORS.primary;
+                backgroundColor = COLORS.pastel1;
+              } else if (isHistoryEntry) {
+                iconName = "book";
+                iconColor = COLORS.primary;
+                backgroundColor = COLORS.pastel3;
+              }
+              
+              return (
+                <View key={completion.id} style={styles.completedMeditationCard}>
+                  <View style={styles.cardHeader}>
+                    <View style={[styles.traditionIcon, { backgroundColor }]}>
+                      <Ionicons name={iconName} size={20} color={iconColor} />
+                    </View>
+                    <View style={styles.cardTitleContainer}>
+                      <Text style={styles.cardTitle}>
+                        {isQuickMeditation ? 
+                          `Quick ${formattedDuration} Meditation` : 
+                          isHistoryEntry ?
+                          `${formattedDuration} Meditation` :
+                          (event?.title || 'Meditation Session')}
+                      </Text>
+                      <Text style={styles.cardSubtitle}>
+                        {completedDate.toLocaleString([], {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </Text>
+                    </View>
                   </View>
-                )}
-                <View style={styles.cardDetailItem}>
-                  <Ionicons 
-                    name={meditationType === 'quick' ? "flash-outline" : 
-                          meditationType === 'global' ? "globe-outline" : 
-                          meditationType === 'user_history' ? "book-outline" :
-                          "calendar-outline"} 
-                    size={16} 
-                    color={COLORS.gray} 
-                  />
-                  <Text style={styles.cardDetailText}>
-                    {meditationType === 'quick' ? "Quick" : 
-                     meditationType === 'global' ? "Global" : 
-                     meditationType === 'user_history' ? "History" :
-                     "Scheduled"}
-                  </Text>
+                  <View style={styles.cardFooter}>
+                    <View style={styles.cardDetailItem}>
+                      <Ionicons name="time-outline" size={16} color={COLORS.gray} />
+                      <Text style={styles.cardDetailText}>{formattedDuration}</Text>
+                    </View>
+                    {(event?.tradition || completion.tradition) && (
+                      <View style={styles.cardDetailItem}>
+                        <Ionicons name="leaf-outline" size={16} color={COLORS.gray} />
+                        <Text style={styles.cardDetailText}>
+                          {FAITH_TRADITIONS.find(t => t.id === (event?.tradition || completion.tradition))?.name || 'Secular'}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.cardDetailItem}>
+                      <Ionicons 
+                        name={meditationType === 'quick' ? "flash-outline" : 
+                              meditationType === 'global' ? "globe-outline" : 
+                              meditationType === 'user_history' ? "book-outline" :
+                              "calendar-outline"} 
+                        size={16} 
+                        color={COLORS.gray} 
+                      />
+                      <Text style={styles.cardDetailText}>
+                        {meditationType === 'quick' ? "Quick" : 
+                         meditationType === 'global' ? "Global" : 
+                         meditationType === 'user_history' ? "History" :
+                         "Scheduled"}
+                      </Text>
+                    </View>
+                    <View style={[styles.completedBadge]}>
+                      <Text style={styles.completedText}>Completed</Text>
+                      <Ionicons name="checkmark" size={14} color={COLORS.secondary} />
+                    </View>
+                  </View>
                 </View>
-                <View style={[styles.completedBadge]}>
-                  <Text style={styles.completedText}>Completed</Text>
-                  <Ionicons name="checkmark" size={14} color={COLORS.secondary} />
-                </View>
-              </View>
+              );
+            })
+          ) : (
+            <View style={styles.emptyStateContainer}>
+              <Ionicons name="time" size={40} color={COLORS.lightGray} />
+              <Text style={styles.emptyStateText}>You haven't meditated yet</Text>
+              <Text style={styles.emptyStateSubtext}>Start with a quick session above</Text>
             </View>
-          );
-        })
-      ) : (
+          )}
+        </>
+      )}
+      
+      {!isUserProfile(user) && (
         <View style={styles.emptyStateContainer}>
           <Ionicons name="time" size={40} color={COLORS.lightGray} />
-          <Text style={styles.emptyStateText}>
-            {isUserProfile(user) ? "You haven't meditated yet" : "Sign in to track your meditations"}
-          </Text>
-          <Text style={styles.emptyStateSubtext}>
-            {isUserProfile(user) ? "Start with a quick session above" : "Join the community to save your progress"}
-          </Text>
-          {!isUserProfile(user) && (
-            <Link href="/auth/sign-in" asChild>
-              <Button style={styles.signInButton} size="small" onPress={() => {}}>
-                Sign In
-              </Button>
-            </Link>
-          )}
+          <Text style={styles.emptyStateText}>Sign in to track your meditations</Text>
+          <Text style={styles.emptyStateSubtext}>Join the community to save your progress</Text>
+          <Link href="/auth/sign-in" asChild>
+            <Button style={styles.signInButton} size="small" onPress={() => {}}>
+              Sign In
+            </Button>
+          </Link>
         </View>
       )}
     </View>
@@ -546,11 +643,16 @@ export default function HomeScreen() {
 
   const renderWelcomeSection = () => (
     <View style={styles.header}>
-      <Text style={[styles.welcomeText, { color: colors.primary }]}>
-        {isUserProfile(user) && user.display_name 
-          ? `Welcome, ${user.display_name}` 
-          : 'Welcome to SyncMeditate'}
-      </Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={[styles.welcomeText, { color: colors.primary }]}>
+          {isUserProfile(user) && user.display_name 
+            ? `Welcome, ${user.display_name}` 
+            : 'Welcome to SyncMeditate'}
+        </Text>
+        <TouchableOpacity onPress={onRefresh} style={{ padding: 8 }}>
+          <Ionicons name="refresh" size={24} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
       <Text style={[styles.subtitleText, { color: colors.gray }]}>
         Find peace in synchronized meditation
       </Text>

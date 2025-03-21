@@ -381,7 +381,8 @@ export default function CommunityScreen() {
           onPress={handleFixDatabase}
           style={[styles.fixDbButton, { backgroundColor: colors.primary }]}
         >
-          <Text style={styles.fixDbButtonText}>Fix Database Issues</Text>
+          <Ionicons name="build-outline" size={24} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.fixDbButtonText}>FIX dB</Text>
         </TouchableOpacity>
       </View>
 

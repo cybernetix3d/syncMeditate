@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { useRealTimeParticipants } from '../../src/hooks/useRealTimeParticipants
 import { usePrivacySettings } from '../../src/context/PrivacyProvider';
 import { useAuth } from '../../src/context/AuthProvider';
 import { UserProfile } from '../../src/context/AuthProvider';
-import { supabase } from '../../src/api/supabase';
+import { supabase, fixDatabaseSchema, fixMeditationPermissions } from '../../src/api/supabase';
 import Timer from '../../src/components/meditation/Timer';
 import LiveCounter from '../../src/components/meditation/LiveCounter';
 import PulseVisualizer from '../../src/components/meditation/PulseVisualizer';
@@ -133,6 +133,16 @@ export default function SyncMeditationScreen() {
     if (isUserProfile(user)) {
       const saveCompletion = async () => {
         try {
+          // First try to fix both schema and permissions
+          try {
+            await fixDatabaseSchema();
+            await fixMeditationPermissions();
+            console.log('Database schema and permissions fixed');
+          } catch (fixError) {
+            console.error('Error fixing database:', fixError);
+            // Continue anyway, we'll try the insert below
+          }
+          
           // For scheduled events, update participant record
           if (!isQuickMeditation && !isGlobalMeditation) {
             const { data: participantData } = await supabase
