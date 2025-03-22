@@ -118,9 +118,10 @@ export default function SignInScreen() {
       >
         <View style={styles.header}>
           <Ionicons name="leaf" size={60} color={colors.primary} />
-          <Text style={[styles.title, { color: colors.headerText }]}>SyncMeditate</Text>
+          <Text style={[styles.title, { color: colors.headerText }]}>Synkr</Text>
           <Text style={[styles.subtitle, { color: colors.subtitleText }]}>
-            Connect with meditators globally
+          Bringing the world together.
+          One thought at a time.
           </Text>
         </View>
         

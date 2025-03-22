@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "SyncMeditate",
-    "slug": "syncmeditate",
+    "name": "Synkr",
+    "slug": "Synkr",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "syncmeditate",
+    "scheme": "synkr",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/images/splash-icon.png",
@@ -40,14 +40,14 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow SyncMeditate to use your location to show you on the global meditation map."
+          "locationAlwaysAndWhenInUsePermission": "Allow Synkr to use your location to show you on the global meditation map."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow SyncMeditate to access your photos to set your profile photo.",
-          "cameraPermission": "Allow SyncMeditate to access your camera to take profile photos."
+          "photosPermission": "Allow Synkr to access your photos to set your profile photo.",
+          "cameraPermission": "Allow Synkr to access your camera to take profile photos."
         }
       ],
       "expo-secure-store"

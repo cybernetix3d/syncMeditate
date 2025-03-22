@@ -4,7 +4,7 @@ This migration adds a `meditation_type` column to the `meditation_completions` t
 
 ## Purpose
 
-The SyncMeditate app supports multiple meditation modes:
+The Synkr app supports multiple meditation modes:
 - Scheduled meditations (from events)
 - Quick meditations (ad-hoc sessions)
 - Global meditations (joined with others)

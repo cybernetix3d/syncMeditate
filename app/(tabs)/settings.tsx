@@ -298,7 +298,7 @@ export default function SettingsScreen() {
               <View style={styles.settingsIconContainer}>
                 <Ionicons name="information-circle" size={20} color={colors.primary} />
               </View>
-              <Text style={[styles.settingsLabel, { color: colors.bodyText }]}>About SyncMeditate</Text>
+              <Text style={[styles.settingsLabel, { color: colors.bodyText }]}>About Synkr</Text>
               <Text style={[styles.versionText, { color: colors.gray }]}>v1.0.0</Text>
             </TouchableOpacity>
           </View>

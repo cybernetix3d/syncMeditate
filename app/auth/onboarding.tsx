@@ -322,7 +322,7 @@ export default function OnboardingScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style="dark" />
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.primary }]}>Welcome to SyncMeditate</Text>
+        <Text style={[styles.headerTitle, { color: colors.primary }]}>Welcome to Synkr</Text>
         {renderStepIndicator()}
       </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>

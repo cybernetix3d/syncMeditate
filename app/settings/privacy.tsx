@@ -175,7 +175,7 @@ export default function PrivacySettingsScreen() {
         <View style={styles.infoSection}>
           <Ionicons name="shield-checkmark" size={24} color={colors.gray} style={styles.infoIcon} />
           <Text style={[styles.infoText, { color: colors.gray }]}>
-            SyncMeditate is committed to protecting your privacy. We never share your personal 
+            Synkr is committed to protecting your privacy. We never share your personal 
             information with third parties and always give you control over your data.
           </Text>
         </View>

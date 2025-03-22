@@ -287,7 +287,7 @@ export default function MeditationDetailsScreen() {
           style={styles.shareButton}
           onPress={() => {
             Share.share({
-              message: `Join me for meditation: ${event.title} on SyncMeditate`,
+              message: `Join me for meditation: ${event.title} on Synkr`,
             });
           }}
         >
