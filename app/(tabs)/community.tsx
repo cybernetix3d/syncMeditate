@@ -17,6 +17,7 @@ import Button from '@/src/components/common/Button';
 import { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
+import WorldMapWithTimezones from '@/src/components/community/WorldMapWithTimezones';
 
 /** Data interfaces */
 interface CommunityStats {
@@ -52,7 +53,7 @@ export default function CommunityScreen() {
   // List of traditions found in meditation_events
   const [traditions, setTraditions] = useState<CommunityTradition[]>([]);
 
-  // Hourly “activity” data for the last 24 hours
+  // Hourly "activity" data for the last 24 hours
   const [globalActivity, setGlobalActivity] = useState<GlobalActivity[]>([]);
 
   const { colors } = useTheme();
@@ -152,7 +153,7 @@ export default function CommunityScreen() {
         .map(([tradition, count]) => ({ tradition, count }))
         .sort((a, b) => b.count - a.count);
 
-      /** 6) Hourly “activity” for last 24 hours
+      /** 6) Hourly "activity" for last 24 hours
        *    - If you want to show how many participants joined each hour,
        *      you can query meditation_participants or user_meditation_history, etc.
        *    - Example: Count participants from meditation_participants in last 24h
@@ -212,7 +213,7 @@ export default function CommunityScreen() {
     fetchCommunityData();
   };
 
-  /** Example button to join a “global” session for 20 minutes */
+  /** Example button to join a "global" session for 20 minutes */
   const handleJoinGlobal = () => {
     router.push('/meditation/sync?id=global&duration=20');
   };
@@ -306,6 +307,17 @@ export default function CommunityScreen() {
                 </Text>
               </View>
             </View>
+          </View>
+
+          {/* World Time Map Section - using real timezone data from Supabase */}
+          <View style={COMMON_STYLES.section}>
+            <Text style={COMMON_STYLES.sectionTitle}>Global Meditation Map</Text>
+            <View style={styles.mapCardContainer}>
+              <WorldMapWithTimezones />
+            </View>
+            <Text style={styles.mapHelper}>
+              See participants' local times around the world
+            </Text>
           </View>
 
           {/* Join Global Button */}
@@ -520,5 +532,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.accent,
     marginLeft: 5,
+  },
+  mapCardContainer: {
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+    height: 270,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mapHelper: {
+    fontSize: 12,
+    color: COLORS.gray,
+    textAlign: 'center',
+    marginTop: 5,
   },
 });
