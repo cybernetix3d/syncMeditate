@@ -20,6 +20,11 @@ export default function SettingsLayout() {
   return (
     <Stack
       screenOptions={{
+        headerShown: true,
+        headerTintColor: colors.primary,
+        headerStyle: {
+          backgroundColor: colors.background,
+        },
         headerRight: () => (
           <TouchableOpacity 
             onPress={handleSignOut}
@@ -31,17 +36,21 @@ export default function SettingsLayout() {
       }}
     >
       <Stack.Screen 
-        name="profile" 
+        name="index" 
         options={{ 
           title: "Settings",
-          headerShown: true
+        }} 
+      />
+      <Stack.Screen 
+        name="profile" 
+        options={{ 
+          title: "Edit Profile",
         }} 
       />
       <Stack.Screen 
         name="privacy" 
         options={{ 
           title: "Privacy",
-          headerShown: true
         }} 
       />
     </Stack>

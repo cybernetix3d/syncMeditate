@@ -12,7 +12,9 @@ import { PrivacyProvider } from '@/src/context/PrivacyProvider';
 import { MeditationProvider } from '@/src/context/MeditationProvider';
 import { COLORS } from '@/src/constants/Styles';
 import { createSolarEvents } from '@/app/events/create';
-import { supabase } from '@/src/api/supabase';
+import { supabase, ensureRSVPAndNotificationTables, migrateUserMeditationHistory } from '@/src/api/supabase';
+import * as Notifications from 'expo-notifications';
+import { registerForPushNotificationsAsync, setupNotificationListeners } from '@/src/services/NotificationService';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -118,12 +120,77 @@ function AuthenticationGuard({ children }: { children: JSX.Element }) {
 
 function RootLayoutNav() {
   const { isDark } = useTheme();
+  const [pushToken, setPushToken] = useState<string | undefined>(undefined);
+  const [initError, setInitError] = useState<string | null>(null);
 
-  // Initialize solar events when the app is ready
+  // Initialize app services
   useEffect(() => {
-    initializeSolarEvents().catch(err => {
-      console.error('Failed to initialize solar events:', err);
-    });
+    const initializeApp = async () => {
+      try {
+        // Initialize solar events
+        try {
+          await initializeSolarEvents();
+        } catch (solarErr) {
+          console.error('Solar events initialization error:', solarErr);
+          // Continue anyway as this is not critical
+        }
+        
+        // Initialize database tables for RSVPs and notifications
+        try {
+          await ensureRSVPAndNotificationTables();
+          
+          // Run the migration from user_meditation_history to meditation_completions
+          try {
+            await migrateUserMeditationHistory();
+          } catch (migrationErr) {
+            console.error('Meditation history migration error:', migrationErr);
+            // Continue despite migration error - this will be attempted again later
+          }
+        } catch (dbErr) {
+          console.log('Database tables initialization error:', dbErr);
+          // The app will still function, users just won't be able to RSVP until tables are created
+        }
+        
+        // Initialize push notifications
+        try {
+          const token = await registerForPushNotificationsAsync();
+          if (token) {
+            setPushToken(token);
+            console.log('Push Notification Token:', token);
+          } else {
+            console.log('No push token obtained - continuing without push notifications');
+          }
+        } catch (notifErr) {
+          console.error('Push notification initialization error:', notifErr);
+          // Continue without push notifications
+        }
+      } catch (err) {
+        console.error('Failed to initialize app services:', err);
+        setInitError('Failed to initialize app. Some features may not work correctly.');
+      }
+    };
+
+    initializeApp();
+  }, []);
+
+  // Setup notification listeners
+  useEffect(() => {
+    let cleanupListeners = () => {};
+    try {
+      cleanupListeners = setupNotificationListeners((notification) => {
+        console.log('Notification received:', notification);
+      });
+    } catch (error) {
+      console.error('Error setting up notification listeners:', error);
+    }
+    
+    return () => {
+      try {
+        cleanupListeners();
+      } catch (error) {
+        console.error('Error cleaning up notification listeners:', error);
+      }
+    };
   }, []);
 
   return (

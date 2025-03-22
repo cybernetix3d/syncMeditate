@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "Synkr",
-    "slug": "Synkr",
+    "name": "SyncMeditate",
+    "slug": "syncmeditate",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "synkr",
-    "userInterfaceStyle": "light",
+    "scheme": "syncmeditate",
+    "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/images/splash-icon.png",
+      "image": "./assets/images/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#1A2151"
+      "backgroundColor": "#ffffff"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -26,7 +26,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#1A2151"
+        "backgroundColor": "#ffffff"
       },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
@@ -36,27 +36,23 @@
         "WRITE_EXTERNAL_STORAGE"
       ]
     },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/images/favicon.png"
+    },
     "plugins": [
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "Allow Synkr to use your location to show you on the global meditation map."
-        }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Allow Synkr to access your photos to set your profile photo.",
-          "cameraPermission": "Allow Synkr to access your camera to take profile photos."
-        }
-      ],
-      "expo-secure-store"
+      "expo-router",
+      "expo-secure-store",
+      "expo-notifications"
     ],
     "extra": {
+      "router": {
+        "origin": false
+      },
       "supabaseUrl": "https://bkzqonmtmxwmkvmzzlyq.supabase.co",
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrenFvbm10bXh3bWt2bXp6bHlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI0NDgzNjQsImV4cCI6MjA1ODAyNDM2NH0.EFWrN1MDSetW9P0O5UYsR98v0gF1nRoZM-n_KsLus8Q",
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "c5b05d99-e1d9-4f92-9b4a-ba8f5d22e76e"
       }
     }
   }
