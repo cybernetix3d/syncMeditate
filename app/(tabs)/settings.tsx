@@ -304,27 +304,8 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Debug Info */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.primary }]}>Debug Info</Text>
-          
-          <View style={[styles.settingsCard, { backgroundColor: colors.surface }]}>
-            <View style={styles.settingsRow}>
-              <Text style={{ color: colors.bodyText, fontSize: 12 }}>
-                Admin email: timhart.sound@gmailc.om
-              </Text>
-            </View>
-            <View style={[styles.separator, { backgroundColor: colors.lightGray }]} />
-            <TouchableOpacity 
-              style={styles.settingsRow}
-              onPress={() => Alert.alert("User Info", JSON.stringify(user, null, 2))}
-            >
-              <Text style={{ color: colors.bodyText, fontSize: 12 }}>
-                Show User Object
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+  
+        
 
         {/* Sign Out Button */}
         <View style={styles.buttonSection}>

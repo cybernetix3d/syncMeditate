@@ -354,37 +354,6 @@ if (eventsError) {
         <Text style={styles.sectionTitle}>Your Recent Meditations</Text>
         {isUserProfile(user) && (
           <>
-            <View
-              style={{
-                marginBottom: 10,
-                padding: 10,
-                backgroundColor: colors.surface,
-                borderRadius: 8,
-              }}
-            >
-              <Text style={{ color: colors.bodyText }}>
-                History entries found: {recentEvents.length}
-              </Text>
-              <Text style={{ color: colors.bodyText, marginVertical: 5 }}>
-                Types: {recentEvents.map((e) => e.meditation_type || 'unknown').join(', ')}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  console.log('Manual refresh clicked');
-                  setForceRefresh((prev) => prev + 1);
-                }}
-                style={{
-                  backgroundColor: colors.primary,
-                  padding: 8,
-                  borderRadius: 4,
-                  alignItems: 'center',
-                  marginTop: 5,
-                }}
-              >
-                <Text style={{ color: '#fff' }}>Force Refresh Data</Text>
-              </TouchableOpacity>
-            </View>
-  
             {recentEvents.length > 0 ? (
               recentEvents.map((completion) => {
                 const event = completion.meditation_events;
@@ -754,12 +723,12 @@ const styles = StyleSheet.create({
   quoteText: {
     fontSize: 16,
     fontStyle: 'italic',
-    color: COLORS.primary,
+    color: COLORS.accent,
     marginBottom: 8,
   },
   quoteAuthor: {
     fontSize: 14,
-    color: COLORS.gray,
+    color: COLORS.primary,
     textAlign: 'right',
   },
   liveButton: {

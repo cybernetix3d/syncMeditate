@@ -2,42 +2,43 @@ import { StyleSheet } from 'react-native';
 
 // App colors with improved contrast for better readability
 export const LIGHT_COLORS = {
-  primary: '#2D7599',      // Darker teal blue - improved contrast  
-  secondary: '#C47A62',    // Darker terracotta - better contrast
-  accent: '#CD2B53',       // Deeper raspberry - more vibrant
-  pastel1: '#E5B82E',      // Richer golden yellow
-  pastel2: '#8ABCD1',      // Medium teal - improved visibility
-  pastel3: '#23945A',      // Deeper emerald - better contrast
-  background: '#F9FBFD',   // Very light blue-white
-  surface: '#FFFFFF',      // White
+  primary: '#0D3B66',      // Navy Blue (professional, solid)
+  secondary: '#F95738',    // Vibrant Orange (dynamic accent)
+  accent: '#EE964B',       // Sunny Amber (energetic highlight)
+  pastel1: '#F4D35E',      // Soft Yellow (warm and inviting)
+  pastel2: '#A1C181',      // Light Green (refreshing, calming)
+  pastel3: '#619B8A',      // Sage Green (balanced, sophisticated)
+  background: '#FAFAFA',   // Off-white (clean and minimal)
+  surface: '#FFFFFF',      // Pure White
   white: '#FFFFFF',
-  lightGray: '#E8F0F4',    // Slightly more visible light gray
-  mediumGray: '#D5DFE5',   // Improved medium gray
-  gray: '#718089',         // Darker gray for better text contrast
-  darkGray: '#3E4C54',     // Much darker gray for better contrast
-  headerText: '#1B5A75',   // Darker teal for better header contrast
-  bodyText: '#2A3A43',     // Darker blue-gray for improved readability
-  subtitleText: '#4F626A'  // Darker subtitle text
+  lightGray: '#E8E9EB',    // Subtle Gray (gentle contrast)
+  mediumGray: '#CDD0D4',   // Neutral Gray (versatile)
+  gray: '#6E7C8A',         // Mid-tone Gray (readable text)
+  darkGray: '#333F48',     // Dark Charcoal (strong contrast)
+  headerText: '#0D3B66',   // Matching Primary (cohesive branding)
+  bodyText: '#2B2D42',     // Dark Navy (excellent readability)
+  subtitleText: '#8D99AE'  // Cool Gray (subtle differentiation)
 };
 
 export const DARK_COLORS = {
-  primary: '#5AB0D1',      // Brighter teal blue for better contrast in dark mode
-  secondary: '#DF8E70',    // Brighter terracotta - more visible
-  accent: '#FF5D8A',       // Brighter raspberry for improved contrast
-  pastel1: '#FFE07A',      // Brighter gold - more visible in dark 
-  pastel2: '#8FD6EE',      // Brighter light teal
-  pastel3: '#4FDA91',      // Brighter emerald for visibility
-  background: '#0A1216',   // Darker blue-black for better contrast
-  surface: '#131E24',      // Darker blue-gray
+  primary: '#1E88E5',      // Bright Blue (high visibility)
+  secondary: '#F4511E',    // Deep Orange (vibrant, appealing)
+  accent: '#FFC107',       // Bold Amber (eye-catching)
+  pastel1: '#4CAF50',      // Bright Green (energetic and fresh)
+  pastel2: '#26C6DA',      // Cyan Blue (modern and vivid)
+  pastel3: '#AB47BC',      // Purple (distinctive and attractive)
+  background: '#121212',   // Deep Black (sleek, professional)
+  surface: '#1E1E1E',      // Charcoal Black (comfortable dark mode)
   white: '#FFFFFF',
-  lightGray: '#1F2930',    // Slightly darker for better element separation
-  mediumGray: '#293640',   // Improved contrast medium gray
-  gray: '#8996A1',         // Brighter gray for better visibility
-  darkGray: '#DCE8F0',     // Brighter for better text contrast
-  headerText: '#93D8F0',   // Brighter teal for better header visibility
-  bodyText: '#EEF5FA',     // Brighter gray for improved readability
-  subtitleText: '#B7C5CE'  // Brighter subtitle text
+  lightGray: '#2C2C2C',    // Dark Gray (clear contrast)
+  mediumGray: '#424242',   // Balanced Gray (neutral elements)
+  gray: '#9E9E9E',         // Medium Gray (legible detail)
+  darkGray: '#E0E0E0',     // Light Gray (strong contrast)
+  headerText: '#BBDEFB',   // Soft Blue (easily readable)
+  bodyText: '#E3F2FD',     // Very Light Blue (high contrast text)
+  subtitleText: '#90A4AE'  // Muted Blue-Gray (professional subtlety)
 };
+
 
 // Export a function to get colors based on theme
 export const getThemeColors = (isDark: boolean) => isDark ? DARK_COLORS : LIGHT_COLORS;

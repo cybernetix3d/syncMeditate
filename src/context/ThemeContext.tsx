@@ -1,6 +1,6 @@
 import React, { createContext, useContext, ReactNode } from 'react';
-import useColorScheme from '@/src/hooks/useColorScheme';
-import { getThemeColors } from '@/src/constants/Styles';
+import useColorScheme from '../hooks/useColorScheme';
+import { getThemeColors } from '../constants/Styles';
 
 type ThemeContextType = {
   isDark: boolean;
