@@ -34,6 +34,9 @@ interface SystemEvent {
   tradition: string | null;
   created_by: string | null;
   is_global: boolean;
+  is_recurring?: boolean;  
+  recurrence_type?: string;  
+  is_system?: boolean;  
 }
 
 interface EventSection {
@@ -159,6 +162,8 @@ export default function AdminEventsScreen() {
   
   const handleCreateWeekEvents = async () => {
     try {
+      console.log("Week events button clicked");
+      
       // Confirm with user
       Alert.alert(
         'Create Week of Solar Events',
@@ -169,8 +174,19 @@ export default function AdminEventsScreen() {
             text: 'Continue', 
             onPress: async () => {
               try {
+                console.log("User confirmed - starting process");
                 setActionLoading(true);
+                
+                // Log AdminEventManager object to verify it's imported correctly
+                console.log("AdminEventManager availability:", 
+                  AdminEventManager ? "Available" : "Not available",
+                  "createSolarEventsForRange method:", 
+                  AdminEventManager?.createSolarEventsForRange ? "Available" : "Not available"
+                );
+                
+                console.log("Calling createSolarEventsForRange");
                 const successCount = await AdminEventManager.createSolarEventsForRange();
+                console.log(`Creation completed with ${successCount} successful days`);
                 
                 Alert.alert('Success', `Created solar events for ${successCount} out of 7 days`);
                 fetchSystemEvents();
@@ -178,6 +194,7 @@ export default function AdminEventsScreen() {
                 console.error('Error creating week events:', error);
                 Alert.alert('Error', `Failed to create week events: ${error instanceof Error ? error.message : 'Unknown error'}`);
               } finally {
+                console.log("Process finished, setting actionLoading to false");
                 setActionLoading(false);
               }
             }
@@ -238,6 +255,10 @@ export default function AdminEventsScreen() {
       minute: '2-digit'
     });
     
+    // Check if this is a recurring event and get the type
+    const isRecurring = item.is_recurring || false;
+    const recurrenceType = item.recurrence_type || 'daily';
+    
     return (
       <View style={[styles.eventCard, { backgroundColor: colors.surface }]}>
         <View style={styles.eventHeader}>
@@ -257,6 +278,16 @@ export default function AdminEventsScreen() {
             <Ionicons name="hourglass-outline" size={16} color={colors.gray} />
             <Text style={[styles.detailText, { color: colors.bodyText }]}>{item.duration} min</Text>
           </View>
+          
+          {/* Display recurrence information if this is a recurring event */}
+          {isRecurring && (
+            <View style={styles.eventDetail}>
+              <Ionicons name="repeat" size={16} color={colors.gray} />
+              <Text style={[styles.detailText, { color: colors.bodyText }]}>
+                {recurrenceType.charAt(0).toUpperCase() + recurrenceType.slice(1)}
+              </Text>
+            </View>
+          )}
           
           {item.is_global && (
             <View style={styles.eventDetail}>

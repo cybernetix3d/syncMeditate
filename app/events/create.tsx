@@ -1,3 +1,4 @@
+// app/events/create.tsx
 import React, { useState } from 'react';
 import { 
   StyleSheet, 
@@ -14,13 +15,13 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '@/src/context/AuthProvider';
-import { supabase, checkSupabaseConnection } from '@/src/api/supabase';
-import { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
-import Button from '@/src/components/common/Button';
-import { COLORS } from '@/src/constants/Styles';
-import { useTheme } from '@/src/context/ThemeContext';
-import SimpleDatePicker from '@/src/components/common/SimpleDatePicker';
+import { useAuth } from '../../src/context/AuthProvider';
+import { supabase, checkSupabaseConnection } from '../../src/api/supabase';
+import { FAITH_TRADITIONS } from '../../src/components/faith/TraditionSelector';
+import Button from '../../src/components/common/Button';
+import { COLORS } from '../../src/constants/Styles';
+import { useTheme } from '../../src/context/ThemeContext';
+import SimpleDatePicker from '../../src/components/common/SimpleDatePicker';
 
 // Function to ensure proper permissions for guest users
 const ensureGuestPermissions = async () => {
@@ -131,14 +132,14 @@ export default function CreateEventScreen() {
     
     try {
       setLoading(true);
-
+  
       // Check Supabase connection
       const isConnected = await checkSupabaseConnection();
       if (!isConnected) {
         throw new Error('Unable to connect to the database. Please check your internet connection and try again.');
       }
       
-      // Get the current auth session (may be null for guest users)
+      // Get the current auth session
       const { data: { session } } = await supabase.auth.getSession();
       
       // If no session (guest user), ensure proper permissions
@@ -149,7 +150,16 @@ export default function CreateEventScreen() {
       // Use the authenticated user ID if available, otherwise use 'guest-user'
       const createdBy = session?.user?.id || 'guest-user';
       console.log('Creating event as:', createdBy);
-
+      
+      // Log recurrence settings for debugging - add more detailed logging
+      console.log('Recurrence settings before creating event:', { 
+        isRecurring, 
+        recurrenceType,
+        selectedType: recurrenceType,
+        stateValue: recurrenceType
+      });
+  
+      // Create event data with the newly added columns - explicitly set values
       const eventData = {
         title: title.trim(),
         description: description.trim() || null,
@@ -158,33 +168,20 @@ export default function CreateEventScreen() {
         tradition,
         created_by: createdBy,
         is_global: isGlobal,
-        is_system: false, // Mark as user-created event
-        // Add recurring event properties
         is_recurring: isRecurring,
         recurrence_type: isRecurring ? recurrenceType : null,
+        is_system: false // For user events, this should be false
       };
-
-      console.log('Attempting to create event with data:', eventData);
-
-      // First check if we can query the table
-      const { count, error: countError } = await supabase
-        .from('meditation_events')
-        .select('*', { count: 'exact', head: true });
-      
-      if (countError) {
-        console.error('Error checking meditation_events table:', countError);
-        throw new Error('Unable to access events table. Please try again.');
-      }
-
-      console.log('Current event count:', count);
-
-      // Now try to insert the event
+  
+      console.log('Attempting to create event with data:', JSON.stringify(eventData));
+  
+      // Insert the event
       const { data, error } = await supabase
         .from('meditation_events')
         .insert([eventData])
         .select('*')
         .single();
-
+  
       if (error) {
         console.error('Supabase error details:', {
           message: error.message,
@@ -194,25 +191,30 @@ export default function CreateEventScreen() {
         });
         throw error;
       }
-
+  
       if (!data) {
         throw new Error('No data returned from event creation');
       }
-
-      console.log('Event created successfully:', data);
+  
+      console.log('Event created successfully - returned data:', data);
       
       const formattedTime = new Date(date).toLocaleTimeString([], { 
         hour: '2-digit', 
         minute: '2-digit' 
       });
-
-      // Show success message
+  
+      // Show success message with recurrence info if applicable
+      let successMessage = `Event created successfully! Your meditation event is scheduled for ${formattedTime}`;
+      if (isRecurring) {
+        successMessage += ` and will repeat ${recurrenceType}.`;
+      }
+      
       Alert.alert(
         'Success',
-        `Event created successfully! Your meditation event is scheduled for ${formattedTime}`,
+        successMessage,
         [{ text: 'OK' }]
       );
-
+  
       // Navigate back to events screen
       router.back();
       
@@ -342,6 +344,9 @@ export default function CreateEventScreen() {
   };
 
   const renderRecurringOptions = () => {
+    // Log the current recurrence type for debugging
+    console.log('Current recurrence type:', recurrenceType);
+    
     return (
       <>
         <View style={styles.toggleContainer}>
@@ -349,7 +354,10 @@ export default function CreateEventScreen() {
           <View style={styles.toggleRow}>
             <Switch
               value={isRecurring}
-              onValueChange={setIsRecurring}
+              onValueChange={(value) => {
+                setIsRecurring(value);
+                console.log('Toggled recurring:', value);
+              }}
               trackColor={{ false: colors.gray, true: colors.primary }}
               thumbColor={COLORS.white}
             />
@@ -372,7 +380,10 @@ export default function CreateEventScreen() {
                       : colors.surface 
                   }
                 ]}
-                onPress={() => setRecurrenceType('daily')}
+                onPress={() => {
+                  setRecurrenceType('daily');
+                  console.log('Set recurrence type to daily');
+                }}
               >
                 <Text 
                   style={[
@@ -397,7 +408,10 @@ export default function CreateEventScreen() {
                       : colors.surface 
                   }
                 ]}
-                onPress={() => setRecurrenceType('weekly')}
+                onPress={() => {
+                  setRecurrenceType('weekly');
+                  console.log('Set recurrence type to weekly');
+                }}
               >
                 <Text 
                   style={[
@@ -422,7 +436,10 @@ export default function CreateEventScreen() {
                       : colors.surface 
                   }
                 ]}
-                onPress={() => setRecurrenceType('monthly')}
+                onPress={() => {
+                  setRecurrenceType('monthly');
+                  console.log('Set recurrence type to monthly');
+                }}
               >
                 <Text 
                   style={[

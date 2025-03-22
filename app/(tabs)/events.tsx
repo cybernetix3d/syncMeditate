@@ -11,12 +11,12 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '@/src/context/AuthProvider';
-import { supabase } from '@/src/api/supabase';
-import { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
-import Button from '@/src/components/common/Button';
-import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
-import { useTheme } from '@/src/context/ThemeContext';
+import { useAuth } from '../../src/context/AuthProvider';
+import { supabase } from '../../src/api/supabase';
+import { FAITH_TRADITIONS } from '../../src/components/faith/TraditionSelector';
+import Button from '../../src/components/common/Button';
+import { COLORS, COMMON_STYLES } from '../../src/constants/Styles';
+import { useTheme } from '../../src/context/ThemeContext';
 import { useFocusEffect } from '@react-navigation/native';
 
 // Event type definition
@@ -221,8 +221,7 @@ export default function EventsScreen() {
   const fetchEvents = async () => {
     try {
       setLoading(true);
-      const now = new Date();
-      console.log('Fetching events at:', now.toISOString());
+      console.log('Fetching events...');
       
       // Fetch all events
       const { data, error } = await supabase
@@ -237,43 +236,9 @@ export default function EventsScreen() {
 
       console.log(`Retrieved ${data?.length || 0} events from database`);
       
-      // Mark solar events as recurring based on their titles
-      const enhancedEvents = (data || []).map(event => {
-        const isSolarEvent = 
-          event.title.includes("Daily Sunrise") || 
-          event.title.includes("Midday Mindfulness") || 
-          event.title.includes("Sunset Reflection") || 
-          event.title.includes("Midnight Stillness");
-        
-        // Add virtual recurring flag for these special events
-        return {
-          ...event,
-          is_recurring: !!isSolarEvent || !!event.is_recurring,
-          recurrence_type: isSolarEvent ? 'daily' : event.recurrence_type
-        };
-      });
-
-      // Only keep events that haven't ended yet
-      const activeEvents = enhancedEvents.filter(event => {
-        const startTime = new Date(event.start_time);
-        
-        // For recurring events, adjust the date to today
-        if (event.is_recurring) {
-          const today = new Date();
-          startTime.setFullYear(today.getFullYear(), today.getMonth(), today.getDate());
-        }
-        
-        // Calculate end time based on duration
-        const endTime = new Date(startTime.getTime() + event.duration * 60000); // Convert duration from minutes to milliseconds
-        
-        // For recurring events, we always show them. For regular events, only if they haven't ended yet
-        return event.is_recurring || endTime > now;
-      });
-
-      console.log(`${activeEvents.length} active events after filtering`);
-
+      // Get participant counts
       const eventsWithCounts = await Promise.all(
-        activeEvents.map(async (event) => {
+        (data || []).map(async (event) => {
           const { count, error: countError } = await supabase
             .from('meditation_participants')
             .select('*', { count: 'exact', head: true })
@@ -299,10 +264,11 @@ export default function EventsScreen() {
   
   const groupEventsByDate = (events: MeditationEvent[]) => {
     const grouped: Record<string, MeditationEvent[]> = {};
+    console.log(`Grouping ${events.length} events by date`);
     
-    // Get dates for the next 7 days for recurring events
+    // Get dates for the next 30 days (approximately 1 month)
     const dates: Date[] = [];
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 30; i++) {
       const date = new Date();
       date.setDate(date.getDate() + i);
       date.setHours(0, 0, 0, 0); // Normalize to start of day
@@ -313,37 +279,54 @@ export default function EventsScreen() {
       const startDate = new Date(event.start_time);
       
       if (event.is_recurring) {
-        // For recurring events, create a copy for each day in our window
+        // Get original event details
+        const originalDayOfWeek = startDate.getDay();
+        const originalDayOfMonth = startDate.getDate();
+        const originalHour = startDate.getHours();
+        const originalMinute = startDate.getMinutes();
+        
+        // For recurring events, create instances for each applicable date
         dates.forEach(date => {
-          // Clone the event
-          const clonedEvent = { ...event };
+          // Handle different recurrence types
+          let shouldShowOnThisDate = false;
           
-          // For solar events, set the time based on the event title
-          const hour = clonedEvent.title.includes("Sunrise") 
-            ? 6 // 6 AM for Sunrise
-            : clonedEvent.title.includes("Midday") 
-              ? 12 // 12 PM for Midday
-              : clonedEvent.title.includes("Sunset") 
-                ? 18 // 6 PM for Sunset
-                : 0; // 12 AM for Midnight
+          if (event.recurrence_type === 'daily') {
+            // Daily events show every day
+            shouldShowOnThisDate = true;
+          } 
+          else if (event.recurrence_type === 'weekly') {
+            // Weekly events only show on matching day of week
+            shouldShowOnThisDate = (date.getDay() === originalDayOfWeek);
+          } 
+          else if (event.recurrence_type === 'monthly') {
+            // Monthly events show on matching day of month
+            shouldShowOnThisDate = (date.getDate() === originalDayOfMonth);
+          }
           
-          // Create a new date with the current date from our window and the time from the original event
+          if (!shouldShowOnThisDate) {
+            return; // Skip this date for this event
+          }
+          
+          // Create a new instance of the event for this date
           const newStartTime = new Date(date);
-          newStartTime.setHours(hour, 0, 0, 0);
+          newStartTime.setHours(originalHour, originalMinute, 0, 0);
           
-          // Skip if this event time is in the past
+          // Skip if this event time is in the past for today
           const now = new Date();
           if (newStartTime < now && date.getDate() === now.getDate()) {
             return;
           }
           
-          // Update the start time for this instance
-          clonedEvent.start_time = newStartTime.toISOString();
+          // Create a cloned event with the new start time
+          const clonedEvent = { 
+            ...event,
+            start_time: newStartTime.toISOString(),
+            // Create a unique ID for this instance to avoid React key conflicts
+            id: `${event.id}-${newStartTime.toISOString()}`
+          };
           
-          // Format the date as YYYY-MM-DD for grouping
+          // Add to grouped object by date
           const dateKey = newStartTime.toISOString().split('T')[0];
-          
-          // Add to our grouped object
           if (!grouped[dateKey]) {
             grouped[dateKey] = [];
           }
@@ -353,6 +336,21 @@ export default function EventsScreen() {
         // For non-recurring events, just use the actual date
         const dateKey = startDate.toISOString().split('T')[0];
         
+        // Skip past events
+        const now = new Date();
+        const endTime = new Date(startDate.getTime() + (event.duration * 60000));
+        if (endTime < now) {
+          return;
+        }
+        
+        // Only include events within our date range (next 30 days)
+        const maxDate = new Date();
+        maxDate.setDate(maxDate.getDate() + 30);
+        if (startDate > maxDate) {
+          return;
+        }
+        
+        // Add to our grouped object
         if (!grouped[dateKey]) {
           grouped[dateKey] = [];
         }
@@ -369,6 +367,13 @@ export default function EventsScreen() {
           new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
         ),
       }));
+    
+    console.log(`Created ${sections.length} date sections`);
+    
+    // Log the sections for debugging
+    sections.forEach(section => {
+      console.log(`Section ${section.title}: ${section.data.length} events`);
+    });
     
     setEventSections(sections);
   };
@@ -392,12 +397,15 @@ export default function EventsScreen() {
   };
   
   const handleJoinEvent = (event: MeditationEvent) => {
+    // Extract the original event ID (removing the date-specific suffix)
+    const originalId = event.id.split('-')[0];
+    
     if (isHappeningNow(event.start_time, event.duration)) {
       // If event is happening now, go directly to sync
-      router.push(`/meditation/sync?id=${event.id}&duration=${event.duration}`);
+      router.push(`/meditation/sync?id=${originalId}&duration=${event.duration}`);
     } else {
       // Otherwise go to details page
-      router.push(`/meditation/${event.id}`);
+      router.push(`/meditation/${originalId}`);
     }
   };
 
@@ -422,7 +430,6 @@ export default function EventsScreen() {
     }
     
     console.log('Attempting to navigate to create event screen');
-    // Simple direct navigation
     try {
       router.push({
         pathname: 'events/create'
@@ -693,7 +700,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: COLORS.accent,
-
   },
   emptySubtitle: {
     fontSize: 14,
@@ -704,28 +710,6 @@ const styles = StyleSheet.create({
   createButton: {
     marginTop: 15,
     width: '100%',
-  },
-  quotesContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  quoteCard: {
-    backgroundColor: 'rgba(233,237,201,0.05)',
-    borderRadius: 12,
-    padding: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.secondary,
-  },
-  quoteText: {
-    fontSize: 16,
-    fontStyle: 'italic',
-    color: COLORS.primary,
-    marginBottom: 8,
-  },
-  quoteAuthor: {
-    fontSize: 14,
-    color: COLORS.gray,
-    textAlign: 'right',
   },
   titleContainer: {
     flexDirection: 'row',
@@ -744,6 +728,5 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     borderLeftColor: COLORS.accent,
     borderLeftWidth: 30,
-    
   },
 });

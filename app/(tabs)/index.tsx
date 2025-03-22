@@ -10,14 +10,14 @@ import {
 } from 'react-native';
 import { Link, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '@/src/context/AuthProvider';
-import { useMeditation } from '@/src/context/MeditationProvider';
-import { supabase } from '@/src/api/supabase';
-import { FAITH_TRADITIONS } from '@/src/components/faith/TraditionSelector';
-import Button from '@/src/components/common/Button';
-import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
-import { useTheme } from '@/src/context/ThemeContext';
-import { UserProfile } from '@/src/context/AuthProvider';
+import { useAuth } from '../../src/context/AuthProvider';
+import { useMeditation } from '../../src/context/MeditationProvider';
+import { supabase } from '../../src/api/supabase';
+import { FAITH_TRADITIONS } from '../../src/components/faith/TraditionSelector';
+import Button from '../../src/components/common/Button';
+import { COLORS, COMMON_STYLES } from '../../src/constants/Styles';
+import { useTheme } from '../../src/context/ThemeContext';
+import { UserProfile } from '../../src/context/AuthProvider';
 
 interface MeditationEvent {
   id: string;

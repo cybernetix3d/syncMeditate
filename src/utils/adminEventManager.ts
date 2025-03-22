@@ -1,5 +1,5 @@
 // src/utils/adminEventManager.ts
-import { supabase } from '@/src/api/supabase';
+import { supabase } from '../../src/api/supabase';
 
 export class AdminEventManager {
   /**
