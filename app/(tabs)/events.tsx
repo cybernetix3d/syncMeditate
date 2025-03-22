@@ -221,39 +221,156 @@ export default function EventsScreen() {
   const fetchEvents = async () => {
     try {
       setLoading(true);
-      console.log('Fetching events...');
       
-      // Fetch all events
-      const { data, error } = await supabase
+      // Get current date for filtering
+      const now = new Date();
+      const nowISOString = now.toISOString();
+      
+      // Set the upper limit date (30 days from now)
+      const upperLimitDate = new Date();
+      upperLimitDate.setDate(upperLimitDate.getDate() + 30);
+      const upperLimitISOString = upperLimitDate.toISOString();
+      
+      // 1. Fetch non-recurring events that are upcoming (start_time >= now)
+      let nonRecurringEvents = [];
+      const { data: fetchedNonRecurringEvents, error: nonRecurringError } = await supabase
         .from('meditation_events')
         .select('*')
+        .gte('start_time', nowISOString)
+        .lt('start_time', upperLimitISOString)
+        .eq('is_recurring', false)
         .order('start_time', { ascending: true });
 
-      if (error) {
-        console.error('Error fetching events:', error);
-        return;
+      if (nonRecurringError) {
+        console.error('Error fetching non-recurring events:', nonRecurringError);
+      } else {
+        nonRecurringEvents = fetchedNonRecurringEvents || [];
+      }
+      
+      // 2. Fetch recurring events separately (we'll handle their recurrence in a more optimized way)
+      let recurringEventsBase = [];
+      const { data: fetchedRecurringEvents, error: recurringError } = await supabase
+        .from('meditation_events')
+        .select('*')
+        .eq('is_recurring', true)
+        .order('start_time', { ascending: true });
+
+      if (recurringError) {
+        console.error('Error fetching recurring events:', recurringError);
+      } else {
+        recurringEventsBase = fetchedRecurringEvents || [];
       }
 
-      console.log(`Retrieved ${data?.length || 0} events from database`);
+      // 3. Fetch participant counts in a single batch query
+      const allEvents = [...(nonRecurringEvents || []), ...(recurringEventsBase || [])];
+      const eventIds = allEvents.map(event => event.id);
       
-      // Get participant counts
-      const eventsWithCounts = await Promise.all(
-        (data || []).map(async (event) => {
-          const { count, error: countError } = await supabase
-            .from('meditation_participants')
-            .select('*', { count: 'exact', head: true })
-            .eq('event_id', event.id)
-            .eq('active', true);
-          if (countError) {
-            console.error('Error counting participants:', countError);
-            return { ...event, participant_count: 0 };
+      let participantCountMap = {};
+      
+      if (eventIds.length > 0) {
+        const { data: participantCounts, error: countsError } = await supabase
+          .rpc('get_participant_counts_by_events', { event_ids: eventIds });
+  
+        if (!countsError && participantCounts) {
+          // Convert results to a Map for easy lookup
+          participantCountMap = participantCounts.reduce((acc, item) => {
+            acc[item.event_id] = item.count;
+            return acc;
+          }, {});
+        }
+      }
+      
+      // Apply participant counts to non-recurring events
+      const nonRecurringEventsWithCounts = (nonRecurringEvents || []).map(event => ({
+        ...event,
+        participant_count: participantCountMap[event.id] || 0
+      }));
+      
+      // Handle recurring events more efficiently
+      const recurringEvents = [];
+      
+      // Get dates for the next 30 days
+      const dates = [];
+      for (let i = 0; i < 30; i++) {
+        const date = new Date(now);
+        date.setDate(date.getDate() + i);
+        date.setHours(0, 0, 0, 0); // Normalize to start of day
+        dates.push(date);
+      }
+      
+      // Process each recurring event
+      (recurringEventsBase || []).forEach(baseEvent => {
+        const originalStartDate = new Date(baseEvent.start_time);
+        const originalDayOfWeek = originalStartDate.getDay();
+        const originalDayOfMonth = originalStartDate.getDate();
+        const originalHour = originalStartDate.getHours();
+        const originalMinute = originalStartDate.getMinutes();
+        
+        // Only generate occurrences for the next 7 days for better performance
+        // (we can load more on demand as the user scrolls)
+        const limitedDates = dates.slice(0, 7);
+        
+        limitedDates.forEach(date => {
+          let shouldShowOnThisDate = false;
+          
+          if (baseEvent.recurrence_type === 'daily') {
+            shouldShowOnThisDate = true;
+          } 
+          else if (baseEvent.recurrence_type === 'weekly') {
+            shouldShowOnThisDate = (date.getDay() === originalDayOfWeek);
+          } 
+          else if (baseEvent.recurrence_type === 'monthly') {
+            shouldShowOnThisDate = (date.getDate() === originalDayOfMonth);
           }
-          return { ...event, participant_count: count || 0 };
-        })
-      );
+          
+          if (!shouldShowOnThisDate) return;
+          
+          // Create a new instance of the event for this date
+          const newStartTime = new Date(date);
+          newStartTime.setHours(originalHour, originalMinute, 0, 0);
+          
+          // Skip if this event time is in the past for today
+          if (newStartTime < now && date.getDate() === now.getDate()) return;
+          
+          // Create a cloned event with the new start time
+          const instanceId = `${baseEvent.id}-${newStartTime.toISOString()}`;
+          const clonedEvent = { 
+            ...baseEvent,
+            start_time: newStartTime.toISOString(),
+            id: instanceId,
+            participant_count: participantCountMap[baseEvent.id] || 0
+          };
+          
+          recurringEvents.push(clonedEvent);
+        });
+      });
       
-      setEvents(eventsWithCounts);
-      groupEventsByDate(eventsWithCounts);
+      // Combine all events
+      const allProcessedEvents = [...nonRecurringEventsWithCounts, ...recurringEvents];
+      
+      // Group events by date more efficiently
+      const grouped = {};
+      
+      allProcessedEvents.forEach(event => {
+        const dateKey = new Date(event.start_time).toISOString().split('T')[0];
+        if (!grouped[dateKey]) {
+          grouped[dateKey] = [];
+        }
+        grouped[dateKey].push(event);
+      });
+      
+      // Convert to sections and sort
+      const sections = Object.keys(grouped)
+        .sort()
+        .map(date => ({
+          title: date,
+          data: grouped[date].sort((a, b) => 
+            new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+          ),
+        }));
+      
+      setEventSections(sections);
+      setEvents(allProcessedEvents);
     } catch (error) {
       console.error('Error in fetchEvents:', error);
     } finally {
@@ -262,126 +379,9 @@ export default function EventsScreen() {
     }
   };
   
-  const groupEventsByDate = (events: MeditationEvent[]) => {
-    const grouped: Record<string, MeditationEvent[]> = {};
-    console.log(`Grouping ${events.length} events by date`);
-    
-    // Get dates for the next 30 days (approximately 1 month)
-    const dates: Date[] = [];
-    for (let i = 0; i < 30; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() + i);
-      date.setHours(0, 0, 0, 0); // Normalize to start of day
-      dates.push(date);
-    }
-    
-    events.forEach(event => {
-      const startDate = new Date(event.start_time);
-      
-      if (event.is_recurring) {
-        // Get original event details
-        const originalDayOfWeek = startDate.getDay();
-        const originalDayOfMonth = startDate.getDate();
-        const originalHour = startDate.getHours();
-        const originalMinute = startDate.getMinutes();
-        
-        // For recurring events, create instances for each applicable date
-        dates.forEach(date => {
-          // Handle different recurrence types
-          let shouldShowOnThisDate = false;
-          
-          if (event.recurrence_type === 'daily') {
-            // Daily events show every day
-            shouldShowOnThisDate = true;
-          } 
-          else if (event.recurrence_type === 'weekly') {
-            // Weekly events only show on matching day of week
-            shouldShowOnThisDate = (date.getDay() === originalDayOfWeek);
-          } 
-          else if (event.recurrence_type === 'monthly') {
-            // Monthly events show on matching day of month
-            shouldShowOnThisDate = (date.getDate() === originalDayOfMonth);
-          }
-          
-          if (!shouldShowOnThisDate) {
-            return; // Skip this date for this event
-          }
-          
-          // Create a new instance of the event for this date
-          const newStartTime = new Date(date);
-          newStartTime.setHours(originalHour, originalMinute, 0, 0);
-          
-          // Skip if this event time is in the past for today
-          const now = new Date();
-          if (newStartTime < now && date.getDate() === now.getDate()) {
-            return;
-          }
-          
-          // Create a cloned event with the new start time
-          const clonedEvent = { 
-            ...event,
-            start_time: newStartTime.toISOString(),
-            // Create a unique ID for this instance to avoid React key conflicts
-            id: `${event.id}-${newStartTime.toISOString()}`
-          };
-          
-          // Add to grouped object by date
-          const dateKey = newStartTime.toISOString().split('T')[0];
-          if (!grouped[dateKey]) {
-            grouped[dateKey] = [];
-          }
-          grouped[dateKey].push(clonedEvent);
-        });
-      } else {
-        // For non-recurring events, just use the actual date
-        const dateKey = startDate.toISOString().split('T')[0];
-        
-        // Skip past events
-        const now = new Date();
-        const endTime = new Date(startDate.getTime() + (event.duration * 60000));
-        if (endTime < now) {
-          return;
-        }
-        
-        // Only include events within our date range (next 30 days)
-        const maxDate = new Date();
-        maxDate.setDate(maxDate.getDate() + 30);
-        if (startDate > maxDate) {
-          return;
-        }
-        
-        // Add to our grouped object
-        if (!grouped[dateKey]) {
-          grouped[dateKey] = [];
-        }
-        grouped[dateKey].push(event);
-      }
-    });
-    
-    // Convert the grouped object to an array and sort by date
-    const sections = Object.keys(grouped)
-      .sort()
-      .map(date => ({
-        title: date,
-        data: grouped[date].sort((a, b) => 
-          new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
-        ),
-      }));
-    
-    console.log(`Created ${sections.length} date sections`);
-    
-    // Log the sections for debugging
-    sections.forEach(section => {
-      console.log(`Section ${section.title}: ${section.data.length} events`);
-    });
-    
-    setEventSections(sections);
-  };
-  
   // Refresh events when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
-      console.log('Events screen focused, refreshing events');
       fetchEvents();
     }, [])
   );
@@ -429,7 +429,6 @@ export default function EventsScreen() {
       return;
     }
     
-    console.log('Attempting to navigate to create event screen');
     try {
       router.push({
         pathname: 'events/create'
