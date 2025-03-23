@@ -125,7 +125,8 @@ const EventCard: React.FC<EventCardProps> = ({
     <TouchableOpacity 
       style={[
         styles.eventCard, 
-        isSystemEvent && styles.systemEventCard
+        isSystemEvent && styles.systemEventCard,
+        attendanceStatus === 'attending' && styles.attendingEventCard
       ]} 
       onPress={handlePress} 
       activeOpacity={0.7}
@@ -200,58 +201,33 @@ const EventCard: React.FC<EventCardProps> = ({
             <Button 
               variant="outline" 
               size="small" 
-              onPress={() => onJoin(event)}
+              onPress={handlePress}
             >
               Details
             </Button>
             
-            <View style={styles.attendanceContainer}>
-              <TouchableOpacity 
-                style={[
-                  styles.attendanceButton, 
-                  attendanceStatus === 'attending' && styles.attendingButton
-                ]}
-                onPress={() => onSetAttendance(
-                  event, 
-                  attendanceStatus === 'attending' ? null : 'attending'
-                )}
-              >
-                <Ionicons 
-                  name={attendanceStatus === 'attending' ? "checkmark-circle" : "checkmark-circle-outline"} 
-                  size={18} 
-                  color={attendanceStatus === 'attending' ? COLORS.white : COLORS.gray} 
-                />
-                <Text style={[
-                  styles.attendanceText,
-                  attendanceStatus === 'attending' && styles.activeAttendanceText
-                ]}>
-                  Attending
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[
-                  styles.attendanceButton, 
-                  attendanceStatus === 'interested' && styles.interestedButton
-                ]}
-                onPress={() => onSetAttendance(
-                  event, 
-                  attendanceStatus === 'interested' ? null : 'interested'
-                )}
-              >
-                <Ionicons 
-                  name={attendanceStatus === 'interested' ? "star" : "star-outline"} 
-                  size={18} 
-                  color={attendanceStatus === 'interested' ? COLORS.white : COLORS.gray} 
-                />
-                <Text style={[
-                  styles.attendanceText,
-                  attendanceStatus === 'interested' && styles.activeAttendanceText
-                ]}>
-                  Interested
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity 
+              style={[
+                styles.attendanceButton, 
+                attendanceStatus === 'attending' && styles.attendingButton
+              ]}
+              onPress={() => onSetAttendance(
+                event, 
+                attendanceStatus === 'attending' ? null : 'attending'
+              )}
+            >
+              <Ionicons 
+                name={attendanceStatus === 'attending' ? "checkmark-circle" : "checkmark-circle-outline"} 
+                size={18} 
+                color={attendanceStatus === 'attending' ? COLORS.white : COLORS.gray} 
+              />
+              <Text style={[
+                styles.attendanceText,
+                attendanceStatus === 'attending' && styles.activeAttendanceText
+              ]}>
+                Attending
+              </Text>
+            </TouchableOpacity>
             
             <Button 
               variant={isRSVPed ? "primary" : "secondary"} 
@@ -763,49 +739,110 @@ export default function EventsScreen() {
       } else {
         // Add RSVP
         try {
-          // Schedule a notification first
-          let notificationId = null;
-          try {
-            notificationId = await scheduleEventReminder(originalId, event.title, event.start_time);
-            console.log(`Scheduled notification with ID: ${notificationId}`);
-          } catch (notifError) {
-            console.error('Error scheduling notification:', notifError);
-            // Continue anyway - we still want to add the RSVP even if notification fails
-          }
-          
-          // Then create the RSVP record with the notification ID
-          const rsvpData = {
-            user_id: user.id,
-            event_id: originalId,
-            reminder_sent: false,
-            created_at: new Date().toISOString(),
-            notification_id: notificationId
-          };
-          
-          const { data: newRSVP, error } = await supabase
+          // First check if an RSVP already exists (to handle potential race conditions)
+          const { data: existingRSVP, error: checkError } = await supabase
             .from('event_rsvps')
-            .insert(rsvpData)
-            .select()
-            .single();
-          
-          if (error) {
-            console.error('Error adding RSVP:', error);
+            .select('id, notification_id')
+            .eq('event_id', originalId)
+            .eq('user_id', user.id)
+            .maybeSingle();
             
-            // Try to cancel the notification if it was created but RSVP failed
-            if (notificationId) {
-              try {
-                await cancelNotification(notificationId);
-              } catch (cancelError) {
-                console.error('Error canceling notification after RSVP failure:', cancelError);
-              }
-            }
-            
-            Alert.alert('Error', 'Failed to set reminder. Please try again.');
+          if (checkError && checkError.code !== 'PGRST116') {
+            console.error('Error checking for existing RSVP:', checkError);
+            Alert.alert('Error', 'Failed to check existing reminders. Please try again.');
             return;
           }
           
-          // Update local state
-          setRsvpedEvents(prev => [...prev, originalId]);
+          // If RSVP already exists, update it instead of inserting
+          if (existingRSVP) {
+            console.log('RSVP already exists, updating instead of inserting');
+            
+            // Schedule a notification first
+            let notificationId = null;
+            try {
+              notificationId = await scheduleEventReminder(originalId, event.title, event.start_time);
+              console.log(`Scheduled notification with ID: ${notificationId}`);
+            } catch (notifError) {
+              console.error('Error scheduling notification:', notifError);
+              // Continue anyway - we still want to update the RSVP even if notification fails
+            }
+            
+            // Update the existing RSVP with the new notification ID
+            const { error: updateError } = await supabase
+              .from('event_rsvps')
+              .update({
+                notification_id: notificationId,
+                reminder_sent: false
+              })
+              .eq('id', existingRSVP.id);
+              
+            if (updateError) {
+              console.error('Error updating RSVP:', updateError);
+              
+              // Try to cancel the notification if it was created but RSVP update failed
+              if (notificationId) {
+                try {
+                  await cancelNotification(notificationId);
+                } catch (cancelError) {
+                  console.error('Error canceling notification after RSVP update failure:', cancelError);
+                }
+              }
+              
+              Alert.alert('Error', 'Failed to update reminder. Please try again.');
+              return;
+            }
+            
+            // Update local state if needed
+            if (!rsvpedEvents.includes(originalId)) {
+              setRsvpedEvents(prev => [...prev, originalId]);
+            }
+            
+          } else {
+            // Schedule a notification first
+            let notificationId = null;
+            try {
+              notificationId = await scheduleEventReminder(originalId, event.title, event.start_time);
+              console.log(`Scheduled notification with ID: ${notificationId}`);
+            } catch (notifError) {
+              console.error('Error scheduling notification:', notifError);
+              // Continue anyway - we still want to add the RSVP even if notification fails
+            }
+            
+            // Then create the RSVP record with the notification ID
+            const rsvpData = {
+              user_id: user.id,
+              event_id: originalId,
+              reminder_sent: false,
+              created_at: new Date().toISOString(),
+              notification_id: notificationId
+            };
+            
+            const { data: newRSVP, error } = await supabase
+              .from('event_rsvps')
+              .insert(rsvpData)
+              .select()
+              .single();
+            
+            if (error) {
+              console.error('Error adding RSVP:', error);
+              
+              // Try to cancel the notification if it was created but RSVP failed
+              if (notificationId) {
+                try {
+                  await cancelNotification(notificationId);
+                } catch (cancelError) {
+                  console.error('Error canceling notification after RSVP failure:', cancelError);
+                }
+              }
+              
+              Alert.alert('Error', 'Failed to set reminder. Please try again.');
+              return;
+            }
+            
+            // Update local state
+            setRsvpedEvents(prev => [...prev, originalId]);
+          }
+          
           Alert.alert(
             'Reminder Set',
             'You will receive a notification before this meditation session begins.',
@@ -1162,12 +1199,19 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.accent,
     borderLeftWidth: 30,
   },
+  attendingEventCard: {
+    borderColor: COLORS.accent,
+    borderWidth: 2,
+    backgroundColor: 'rgba(73, 143, 225, 0.08)',
+  },
   footerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10
   },
   rsvpButton: {
-    marginLeft: 10,
+    marginLeft: 'auto',
   },
   attendanceContainer: {
     flexDirection: 'row',

@@ -176,7 +176,8 @@ export async function scheduleEventReminder(eventId: string, eventTitle: string,
       body: `Your meditation event "${eventTitle}" starts in ${reminderMinutes} minutes.`,
       data: { eventId: validEventId, type: 'event_reminder' },
       trigger: {
-        channelId: 'default'
+        channelId: 'default',
+        date: reminderDate
       }
     });
     
