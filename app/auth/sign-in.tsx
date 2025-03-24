@@ -11,7 +11,7 @@ import {
   Alert,
   Image,
 } from 'react-native';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '@/src/context/AuthProvider';
@@ -21,12 +21,15 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { EmailVerification } from '@/src/components/auth/EmailVerification';
 
 export default function SignInScreen() {
-  const { signIn, signInAnonymously } = useAuth();
+  console.log('Rendering Sign-In Screen');
+  
+  const { signIn, signInAnonymously, user } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(false);
+  const router = useRouter();
   const { colors } = useTheme();
   
   const handleSignIn = async () => {
@@ -37,16 +40,26 @@ export default function SignInScreen() {
     
     try {
       setLoading(true);
+      console.log('Attempting sign in with email:', email);
       const { error } = await signIn(email, password);
       
       if (error) {
+        console.error('Sign in error:', error.message);
         if (error.message.includes('Email not confirmed')) {
           setNeedsVerification(true);
         } else {
           Alert.alert('Sign In Error', error.message);
         }
+      } else {
+        console.log('Sign in successful, attempting navigation');
+        try {
+          router.replace('/(tabs)');
+        } catch (navError) {
+          console.error('Navigation error after sign-in:', navError);
+        }
       }
     } catch (error: any) {
+      console.error('Unexpected sign-in error:', error);
       Alert.alert('Error', error.message || 'An unexpected error occurred');
     } finally {
       setLoading(false);

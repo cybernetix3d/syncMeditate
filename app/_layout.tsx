@@ -1,9 +1,9 @@
+import React, { useEffect, useState } from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack, Redirect, useRouter, useSegments } from 'expo-router';
+import { Stack, Redirect, useRouter, useSegments, Slot } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, Text } from 'react-native';
 import 'react-native-reanimated';
 import { ThemeProvider, useTheme } from '@/src/context/ThemeContext';
@@ -19,7 +19,7 @@ import { registerForPushNotificationsAsync, setupNotificationListeners } from '@
 export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
-  initialRouteName: '(tabs)',
+  initialRouteName: 'index',
 };
 
 SplashScreen.preventAutoHideAsync();
@@ -67,28 +67,60 @@ function AuthenticationGuard({ children }: { children: JSX.Element }) {
   // Check if user is in auth group and current screen
   const isInAuthGroup = segments[0] === 'auth';
   const isOnboardingScreen = segments.length > 1 && segments[0] === 'auth' && segments[1] === 'onboarding';
+  const isLandingPage = segments.length === 1 && segments[0] === 'index';
+  const isRootPath = segments.length === 0 || (segments.length === 1 && segments[0] === '');
+  const isDebugPage = segments.length === 1 && segments[0] === 'debug';
+  
+  console.log('Auth Guard State:', { 
+    user: user ? (typeof user === 'boolean' ? 'true (no profile)' : 'object (has profile)') : 'false', 
+    loading,
+    segments,
+    isNavigationReady,
+    isInAuthGroup,
+    isLandingPage,
+    isRootPath,
+    isDebugPage
+  });
   
   useEffect(() => {
+    // Only set navigation ready once mounting is complete
     if (!isNavigationReady) {
+      console.log('Setting navigation ready');
       setIsNavigationReady(true);
       return;
     }
+  }, []);
+  
+  useEffect(() => {
+    // Don't try to navigate until navigation is ready and loading is complete
+    if (!isNavigationReady || loading) {
+      console.log('Skipping navigation - not ready or still loading');
+      return;
+    }
     
-    if (loading) return;
+    // Allow access to landing page, root path, or debug page without authentication
+    if (isLandingPage || isRootPath || isDebugPage) {
+      console.log('Allowing access to public page:', segments.join('/'));
+      return;
+    }
     
     // User is not authenticated (user === false)
     if (user === false) {
+      console.log('User not authenticated, current path:', segments.join('/'));
       // Only redirect if not already in auth group
-      if (!isInAuthGroup) {
+      if (!isInAuthGroup && !isLandingPage) {
+        console.log('Redirecting to sign-in');
         router.replace('/auth/sign-in');
       }
       return;
     }
     
     // User is authenticated (user === true or user is an object)
+    console.log('User authenticated:', typeof user === 'boolean' ? 'No profile' : 'Has profile');
     
     // If the user is authenticated and trying to access auth screens (not onboarding)
     if (user && isInAuthGroup && !isOnboardingScreen) {
+      console.log('Authenticated user trying to access auth screen, redirecting to tabs');
       router.replace('/(tabs)');
       return;
     }
@@ -101,6 +133,7 @@ function AuthenticationGuard({ children }: { children: JSX.Element }) {
        (typeof user === 'object' && user !== null && !user.display_name)) && 
       !isOnboardingScreen
     ) {
+      console.log('User needs onboarding, redirecting');
       router.replace('/auth/onboarding');
       return;
     }
@@ -196,21 +229,27 @@ function RootLayoutNav() {
   return (
     <NavigationThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
       <AuthenticationGuard>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: false }} />
-          <Stack.Screen name="auth" options={{ headerShown: false }} />
-          <Stack.Screen name="events/create" options={{ headerShown: false }} />
-          <Stack.Screen name="meditation/[id]" options={{ headerShown: false }} />
-          <Stack.Screen name="meditation/sync" options={{ headerShown: false }} />
-          <Stack.Screen name="history" options={{ headerShown: false }} />
-          <Stack.Screen name="settings" options={{ headerShown: false }} />
-          <Stack.Screen name="settings/privacy" options={{ headerShown: false }} />
-          <Stack.Screen name="settings/theme" options={{ headerShown: false }} />
-          <Stack.Screen name="settings/about" options={{ headerShown: false }} />
-          <Stack.Screen name="settings/account" options={{ headerShown: false }} />
-          <Stack.Screen name="settings/notifications" options={{ headerShown: false }} />
-        </Stack>
+        {/* Use only one navigator - Slot for development, Stack for production */}
+        {__DEV__ ? (
+          <Slot />
+        ) : (
+          <Stack>
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: false }} />
+            <Stack.Screen name="auth" options={{ headerShown: false }} />
+            <Stack.Screen name="events/create" options={{ headerShown: false }} />
+            <Stack.Screen name="meditation/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="meditation/sync" options={{ headerShown: false }} />
+            <Stack.Screen name="history" options={{ headerShown: false }} />
+            <Stack.Screen name="settings" options={{ headerShown: false }} />
+            <Stack.Screen name="settings/privacy" options={{ headerShown: false }} />
+            <Stack.Screen name="settings/theme" options={{ headerShown: false }} />
+            <Stack.Screen name="settings/about" options={{ headerShown: false }} />
+            <Stack.Screen name="settings/account" options={{ headerShown: false }} />
+            <Stack.Screen name="settings/notifications" options={{ headerShown: false }} />
+          </Stack>
+        )}
       </AuthenticationGuard>
     </NavigationThemeProvider>
   );

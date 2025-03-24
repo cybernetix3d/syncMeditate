@@ -23,6 +23,8 @@ import Button from '../../src/components/common/Button';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
+import RequestForm from '../../src/components/meditation/RequestForm';
+import RequestList from '../../src/components/meditation/RequestList';
 
 const isUserProfile = (user: boolean | UserProfile | null): user is UserProfile => {
   return typeof user !== 'boolean' && user !== null && 'id' in user;
@@ -58,6 +60,8 @@ export default function SyncMeditationScreen() {
 
   const { participantCount, participantLocations, loading: participantsLoading } =
     useRealTimeParticipants(isQuickMeditation ? null : isGlobalMeditation ? null : eventId as string);
+
+  const [showRequestForm, setShowRequestForm] = useState(false);
 
   useEffect(() => {
     const fetchEventDetails = async () => {
@@ -274,17 +278,46 @@ export default function SyncMeditationScreen() {
           onComplete={handleComplete}
         />
         <PulseVisualizer isActive={meditationState === 'IN_PROGRESS'} size={60} color={colors.primary} />
+        
+        {meditationState === 'PREPARING' && (
+          <>
+            {showRequestForm ? (
+              <RequestForm
+                onSubmit={() => setShowRequestForm(false)}
+                onCancel={() => setShowRequestForm(false)}
+              />
+            ) : (
+              <>
+                <View style={styles.buttonContainer}>
+                  <Button onPress={handleStart} size="large" fullWidth>
+                    Begin Meditation
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onPress={() => setShowRequestForm(true)}
+                    size="large"
+                    fullWidth
+                    style={{ marginTop: 8 }}
+                  >
+                    Submit Prayer/Healing Request
+                  </Button>
+                </View>
+
+                <View style={[styles.requestsContainer, { backgroundColor: colors.surface }]}>
+                  <Text style={[styles.requestsTitle, { color: colors.primary }]}>
+                    Community Requests
+                  </Text>
+                  <RequestList />
+                </View>
+              </>
+            )}
+          </>
+        )}
+
         {eventDetails?.description && (
           <View style={[styles.descriptionContainer, { backgroundColor: colors.surface }]}>
             <Text style={[styles.descriptionTitle, { color: colors.primary }]}>About this meditation</Text>
             <Text style={[styles.descriptionText, { color: colors.gray }]}>{eventDetails.description}</Text>
-          </View>
-        )}
-        {meditationState === 'PREPARING' && (
-          <View style={styles.buttonContainer}>
-            <Button onPress={handleStart} size="large" fullWidth>
-              Begin Meditation
-            </Button>
           </View>
         )}
       </ScrollView>
@@ -347,5 +380,15 @@ const styles = StyleSheet.create({
   buttonContainer: {
     padding: 16,
     marginTop: 20,
+  },
+  requestsContainer: {
+    marginTop: 24,
+    padding: 16,
+    borderRadius: 12,
+  },
+  requestsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 16,
   },
 });

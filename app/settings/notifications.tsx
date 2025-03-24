@@ -176,7 +176,7 @@ export default function NotificationsScreen() {
       const notificationId = await scheduleNotification({
         type: 'system_notification',
         title: 'Test Notification',
-        body: 'This is a test notification from SyncMeditate',
+        body: 'This is a test notification from Synkr',
         trigger: null // immediate notification
       });
       

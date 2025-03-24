@@ -1,32 +1,18 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Button from '../src/components/common/Button';
-import { router } from 'expo-router';
+import { router, Link, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 
 export default function NotFoundScreen() {
-  const handleGoHome = () => {
-    router.push('/');
-  };
+  useEffect(() => {
+    // This will help with direct navigation attempts
+    console.log('Not found page - redirecting to landing page');
+  }, []);
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.iconContainer}>
-        <Ionicons name="leaf" size={60} color={COLORS.secondary} />
-        <View style={styles.questionMark}>
-          <Text style={styles.questionMarkText}>?</Text>
-        </View>
-      </View>
-      <Text style={styles.title}>Page Not Found</Text>
-      <Text style={styles.subtitle}>
-        The meditation path you're seeking seems to have vanished into thin air
-      </Text>
-      <View style={styles.buttonContainer}>
-        <Button onPress={handleGoHome}>Return to Home</Button>
-      </View>
-    </View>
-  );
+  // Redirect to the landing page
+  return <Redirect href="/" />;
 }
 
 const styles = StyleSheet.create({

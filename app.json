@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "SyncMeditate",
-    "slug": "syncmeditate",
+    "name": "Synkr",
+    "slug": "synkr",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "syncmeditate",
+    "scheme": "synkr",
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/images/splash.png",
@@ -54,6 +54,9 @@
       "eas": {
         "projectId": "cc3e9b80-95a4-47cf-8679-75819254ea93"
       }
+    },
+    "experiments": {
+      "typedRoutes": true
     }
   }
 }
