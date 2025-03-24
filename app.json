@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Synkr",
-    "slug": "synkr",
+    "name": "SoulSync",
+    "slug": "soulsync",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "synkr",
+    "scheme": "soulsync",
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/images/splash.png",

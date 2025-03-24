@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">
+  <!-- Three electron orbits (black ellipses) -->
+  <!-- First orbit (horizontal) -->
+  <ellipse cx="150" cy="150" rx="125" ry="75" fill="none" stroke="#2D2D2D" stroke-width="12" />
+  
+  <!-- Second orbit (tilted right) -->
+  <ellipse cx="150" cy="150" rx="125" ry="75" fill="none" stroke="#2D2D2D" stroke-width="12" transform="rotate(60, 150, 150)" />
+  
+  <!-- Third orbit (tilted left) -->
+  <ellipse cx="150" cy="150" rx="125" ry="75" fill="none" stroke="#2D2D2D" stroke-width="12" transform="rotate(-60, 150, 150)" />
+  
+  <!-- Central nucleus (orange circle) -->
+  <circle cx="150" cy="150" r="20" fill="#F15A24" />
+  
+  <!-- Electrons (colored circles) -->
+  <circle cx="150" cy="75" r="12" fill="#00CCAA" /> <!-- Teal electron at top -->
+  <circle cx="85" cy="190" r="12" fill="#8CC63F" /> <!-- Green electron at bottom left -->
+  <circle cx="215" cy="190" r="12" fill="#F7931E" /> <!-- Orange electron at bottom right -->
+</svg>

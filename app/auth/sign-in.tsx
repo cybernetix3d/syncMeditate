@@ -131,7 +131,7 @@ export default function SignInScreen() {
       >
         <View style={styles.header}>
           <Ionicons name="leaf" size={60} color={colors.primary} />
-          <Text style={[styles.title, { color: colors.headerText }]}>Synkr</Text>
+          <Text style={[styles.title, { color: colors.headerText }]}>SoulSync</Text>
           <Text style={[styles.subtitle, { color: colors.subtitleText }]}>
           Bringing the world together.
           One thought at a time.

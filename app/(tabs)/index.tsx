@@ -495,7 +495,7 @@ if (eventsError) {
         <Text style={[styles.welcomeText, { color: colors.primary }]}>
           {isUserProfile(user) && user.display_name 
             ? `Welcome, ${user.display_name}` 
-            : 'Welcome to Synkr'}
+            : 'Welcome to SoulSync'}
         </Text>
         <TouchableOpacity onPress={onRefresh} style={{ padding: 8 }}>
           <Ionicons name="refresh" size={24} color={colors.primary} />

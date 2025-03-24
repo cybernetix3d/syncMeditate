@@ -11,7 +11,7 @@ export default function Root({ children }: { children: React.ReactNode }) {
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no"
         />
-        <title>Synkr - Bringing the world together one thought at a time</title>
+        <title>SoulSync - Bringing the world together one thought at a time</title>
         <meta name="description" content="Sync meditations with people around the world to create powerful resonance for healing and positive change" />
         <meta name="theme-color" content="#040D21" />
         

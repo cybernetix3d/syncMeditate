@@ -6,7 +6,7 @@ export default function App() {
   // Instead of redirecting immediately, show content with a link
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Loading Synkr...</Text>
+      <Text style={styles.text}>Loading SoulSync...</Text>
       <Link href="/index" style={styles.link}>
         <Text style={styles.linkText}>Tap to continue if not redirected</Text>
       </Link>
