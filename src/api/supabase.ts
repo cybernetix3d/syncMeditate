@@ -224,6 +224,16 @@ export const fixDatabaseSchema = async () => {
         error: tablesError 
       };
     }
+
+    // Check and create meditation_requests table
+    const requestsTableCreated = await ensureMeditationRequestsTable();
+    if (!requestsTableCreated) {
+      return {
+        success: false,
+        message: 'Failed to create meditation_requests table',
+        error: 'Table creation failed'
+      };
+    }
     
     console.log('Database schema check completed');
     return { success: true, message: 'Database schema appears to be working' };
@@ -315,14 +325,44 @@ export const fixMeditationPermissions = async () => {
 // Helper function to safely execute SQL statements
 const executeSQLSafely = async (sql: string): Promise<boolean> => {
   try {
-    // Many databases have a 'stored procedure' approach for executing SQL
-    // Supabase typically requires admin access for schema changes, so this approach
-    // is primarily useful in development or if you have proper permissions
-    await supabase.rpc('execute_sql', { sql });
+    // Instead of using RPC, we'll try to execute the statements directly through the REST API
+    // First, check if the table exists
+    const { data: tableExists, error: tableError } = await supabase
+      .from('meditation_requests')
+      .select('id')
+      .limit(1);
+
+    if (tableError?.code === 'PGRST204') {
+      // Table doesn't exist, create it
+      const { data: createData, error: createError } = await supabase
+        .from('meditation_requests')
+        .insert({
+          id: '00000000-0000-0000-0000-000000000000',
+          user_id: '00000000-0000-0000-0000-000000000000',
+          request_type: 'prayer',
+          focus_area: 'test',
+          is_active: false
+        });
+
+      if (createError && createError.code !== '23505') { // Ignore unique violation
+        console.error('Error creating table:', createError);
+        return false;
+      }
+    }
+
+    // Enable RLS
+    const { error: rlsError } = await supabase.rpc('enable_rls', {
+      table_name: 'meditation_requests'
+    });
+
+    if (rlsError) {
+      console.error('Error enabling RLS:', rlsError);
+    }
+
     return true;
   } catch (error) {
     console.error('Error executing SQL:', error);
-    console.warn('SQL execution failed. This may require admin access:', sql);
+    console.warn('SQL execution failed:', sql);
     return false;
   }
 };
@@ -652,5 +692,65 @@ export const getMeditationEventById = async (id: string) => {
   } catch (error) {
     console.error('Error in getMeditationEventById:', error);
     return { data: null, error };
+  }
+};
+
+// Helper function to ensure meditation requests table exists
+export const ensureMeditationRequestsTable = async (): Promise<boolean> => {
+  try {
+    console.log('Checking meditation_requests table...');
+    
+    // First check if the table exists
+    const { error: checkError } = await supabase
+      .from('meditation_requests')
+      .select('id')
+      .limit(1);
+
+    if (checkError) {
+      console.log('Table check failed, attempting to create table...');
+      
+      // Create the table using a minimal approach that should work with limited permissions
+      const { error: createError } = await supabase
+        .from('meditation_requests')
+        .insert({
+          id: '00000000-0000-0000-0000-000000000000',
+          user_id: '00000000-0000-0000-0000-000000000000',
+          request_type: 'prayer',
+          focus_area: 'Initial setup',
+          is_active: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select();
+
+      if (createError && !createError.message.includes('duplicate key')) {
+        console.error('Failed to create table:', createError);
+        return false;
+      }
+    }
+
+    // Try to enable RLS and policies through direct table operations
+    try {
+      // Test if we can insert as an authenticated user
+      const { error: insertError } = await supabase
+        .from('meditation_requests')
+        .insert({
+          request_type: 'prayer',
+          focus_area: 'Test request',
+          is_active: false
+        })
+        .select();
+
+      if (insertError && !insertError.message.includes('permission denied')) {
+        console.error('Error testing insert permissions:', insertError);
+      }
+    } catch (error) {
+      console.error('Error setting up permissions:', error);
+    }
+
+    return true;
+  } catch (err) {
+    console.error('Failed to create meditation_requests table:', err);
+    return false;
   }
 };

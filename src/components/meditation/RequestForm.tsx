@@ -14,10 +14,10 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthProvider';
-import { supabase } from '../../api/supabase';
+import { supabase, fixDatabaseSchema } from '../../api/supabase';
 import Button from '../common/Button';
 import { FAITH_TRADITIONS } from '../faith/TraditionSelector';
-import { usePrivacySettings } from '../../context/PrivacyContext';
+import { usePrivacySettings, PrivacySettings } from '../../context/PrivacyContext';
 import { UserProfile } from '../../context/AuthProvider';
 
 interface RequestFormProps {
@@ -29,6 +29,16 @@ export default function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
   const { colors } = useTheme();
   const { user } = useAuth();
   const { privacySettings } = usePrivacySettings();
+  
+  // Default privacy settings if none are loaded
+  const defaultPrivacySettings: PrivacySettings = {
+    locationSharingLevel: 'none',
+    useAnonymousId: false,
+    shareTradition: true,
+  };
+
+  // Use loaded settings or defaults
+  const currentSettings = privacySettings || defaultPrivacySettings;
   
   const [requestType, setRequestType] = useState<'prayer' | 'healing' | 'vibe' | 'meditation'>('prayer');
   const [fullName, setFullName] = useState('');
@@ -53,77 +63,131 @@ export default function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
       quality: 0.8,
     });
 
-    if (!result.canceled && user && typeof user !== 'boolean') {
-      // Upload image to Supabase Storage
+    if (!result.canceled && result.assets[0] && user && typeof user !== 'boolean') {
       try {
-        const ext = result.assets[0].uri.substring(result.assets[0].uri.lastIndexOf('.') + 1);
-        const fileName = `${Date.now()}.${ext}`;
-        const filePath = `${user.id}/${fileName}`;
-        
-        const response = await fetch(result.assets[0].uri);
-        const blob = await response.blob();
-        
+        let blob: Blob;
+        const uri = result.assets[0].uri;
+
+        if (Platform.OS === 'web') {
+          // For web, we need to fetch the data differently
+          const response = await fetch(uri);
+          blob = await response.blob();
+        } else {
+          // For native platforms, we can use the URI directly
+          const response = await fetch(uri);
+          blob = await response.blob();
+        }
+
+        // Generate a unique filename with proper extension
+        const fileInfo = uri.match(/^.*[/\\](.*?)(\?.*)?$/);
+        const fileName = fileInfo ? fileInfo[1] : `${Date.now()}.jpg`;
+        const filePath = `${user.id}/${Date.now()}-${fileName}`;
+
+        console.log('Uploading image:', {
+          size: blob.size,
+          type: blob.type,
+          path: filePath
+        });
+
+        // Upload to Supabase Storage
         const { data, error } = await supabase.storage
-          .from('request-images')
-          .upload(filePath, blob);
+          .from('meditation-requests')
+          .upload(filePath, blob, {
+            contentType: blob.type || 'image/jpeg',
+            cacheControl: '3600',
+            upsert: false
+          });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Storage upload error:', error);
+          throw error;
+        }
 
+        // Get the public URL
         const { data: { publicUrl } } = supabase.storage
-          .from('request-images')
+          .from('meditation-requests')
           .getPublicUrl(filePath);
 
+        console.log('Image uploaded successfully:', publicUrl);
         setImage(publicUrl);
       } catch (error) {
         console.error('Error uploading image:', error);
-        Alert.alert('Error', 'Failed to upload image. Please try again.');
+        Alert.alert(
+          'Upload Error',
+          'Failed to upload image. Please try again or choose a different image.'
+        );
       }
     }
   };
 
   const handleSubmit = async () => {
+    if (!user || typeof user === 'boolean') {
+      Alert.alert('Error', 'Please sign in to submit a request.');
+      return;
+    }
+
     if (!focusArea) {
       Alert.alert('Required Field', 'Please specify what area you would like people to focus on.');
       return;
     }
 
-    if (!user || typeof user === 'boolean') {
-      Alert.alert('Error', 'You must be logged in to submit a request.');
-      return;
-    }
-
     try {
-      setIsSubmitting(true);
+      console.log('Submitting request:', {
+        requestType,
+        focusArea,
+        image,
+        location,
+        locationPrecision: currentSettings.locationSharingLevel,
+        userId: user.id,
+        tradition: user.faith_preferences?.primaryTradition
+      });
 
+      // First ensure the table exists
+      await fixDatabaseSchema();
+
+      // Submit the request
       const { data, error } = await supabase
         .from('meditation_requests')
-        .insert({
-          user_id: user.id,
-          request_type: requestType,
-          tradition: user.faith_preferences?.primaryTradition,
-          full_name: isAnonymous ? null : fullName,
-          image_url: image,
-          location: location || privacySettings.locationSharingLevel,
-          location_precision: privacySettings.locationSharingLevel,
-          focus_area: focusArea,
-          desired_outcome: desiredOutcome,
-          is_anonymous: isAnonymous
-        })
+        .insert([
+          {
+            user_id: user.id,
+            request_type: requestType,
+            tradition: user.faith_preferences?.primaryTradition,
+            full_name: isAnonymous ? null : fullName,
+            image_url: image,
+            location: location || null,
+            location_precision: currentSettings.locationSharingLevel,
+            focus_area: focusArea.trim(),
+            desired_outcome: desiredOutcome.trim() || null,
+            is_anonymous: isAnonymous,
+            is_active: true
+          }
+        ])
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error submitting request:', error);
+        if (error.code === 'PGRST204') {
+          Alert.alert('Error', 'The meditation_requests table does not exist. Please try again in a moment.');
+        } else if (error.code === '42501') {
+          Alert.alert('Error', 'You do not have permission to create meditation requests.');
+        } else if (error.code === '23503') {
+          Alert.alert('Error', 'Invalid tradition selected. Please update your faith preferences.');
+        } else {
+          Alert.alert('Error', `Failed to submit request: ${error.message}`);
+        }
+        return;
+      }
 
-      Alert.alert(
-        'Request Submitted',
-        'Your request has been shared with the community.',
-        [{ text: 'OK', onPress: onSubmit }]
-      );
+      console.log('Request submitted successfully:', data);
+      onSubmit?.();
     } catch (error) {
-      console.error('Error submitting request:', error);
-      Alert.alert('Error', 'Failed to submit request. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+      console.error('Error in handleSubmit:', error);
+      Alert.alert(
+        'Error',
+        'An unexpected error occurred while submitting your request. Please try again.'
+      );
     }
   };
 

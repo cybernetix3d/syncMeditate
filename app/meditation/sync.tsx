@@ -63,6 +63,21 @@ export default function SyncMeditationScreen() {
 
   const [showRequestForm, setShowRequestForm] = useState(false);
 
+  // Fix database schema on mount
+  useEffect(() => {
+    const initializeDatabase = async () => {
+      try {
+        const result = await fixDatabaseSchema();
+        if (!result.success) {
+          console.error('Failed to fix database schema:', result.error);
+        }
+      } catch (error) {
+        console.error('Error initializing database:', error);
+      }
+    };
+    initializeDatabase();
+  }, []);
+
   useEffect(() => {
     const fetchEventDetails = async () => {
       if (isQuickMeditation || isGlobalMeditation) {
