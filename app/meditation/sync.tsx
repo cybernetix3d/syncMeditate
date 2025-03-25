@@ -280,9 +280,8 @@ export default function SyncMeditationScreen() {
         <Text style={[styles.title, { color: colors.white }]}>{eventDetails?.title || 'Meditation'}</Text>
         <View style={styles.placeholder} />
       </View>
-      <ScrollView 
-        style={[styles.scrollView, { backgroundColor: colors.background }]} 
-        contentContainerStyle={styles.scrollContent}
+      <View 
+        style={[styles.contentContainer, { backgroundColor: colors.background }]} 
       >
         {!isQuickMeditation && !isGlobalMeditation && <LiveCounter count={participantCount || directCount} />}
         <Timer
@@ -322,6 +321,8 @@ export default function SyncMeditationScreen() {
                   <Text style={[styles.requestsTitle, { color: colors.primary }]}>
                     Community Requests
                   </Text>
+                </View>
+                <View style={styles.listContainer}>
                   <RequestList />
                 </View>
               </>
@@ -335,7 +336,7 @@ export default function SyncMeditationScreen() {
             <Text style={[styles.descriptionText, { color: colors.gray }]}>{eventDetails.description}</Text>
           </View>
         )}
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -376,6 +377,12 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },
+  contentContainer: {
+    flex: 1,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingVertical: 16,
+  },
   scrollContent: {
     paddingBottom: 40,
   },
@@ -405,5 +412,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 16,
+  },
+  listContainer: {
+    flex: 1,
+    height: 300, // Set a fixed height for the list container
   },
 });

@@ -1,7 +1,9 @@
 import 'react-native-url-polyfill/auto';
+import 'react-native-get-random-values';
 import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import { v4 as uuidv4 } from 'uuid';
 
 // Define database types (placeholder - will be generated or extended as needed)
 export type Database = {
@@ -226,6 +228,19 @@ export const fixDatabaseSchema = async () => {
         message: 'Failed to create meditation_requests table',
         error: 'Table creation failed'
       };
+    }
+    
+    // Ensure RSVP and notification tables
+    await ensureRSVPAndNotificationTables();
+    
+    // Migrate meditation history with proper UUIDs
+    try {
+      console.log('Attempting to migrate meditation history...');
+      const migrationResult = await migrateMeditationHistory();
+      console.log('Migration result:', migrationResult);
+    } catch (migrationError) {
+      console.error('Error during migration:', migrationError);
+      // Don't fail the whole operation if migration fails
     }
     
     console.log('Database schema check completed');
@@ -597,11 +612,12 @@ export async function migrateMeditationHistory(): Promise<boolean> {
     // and avoid ID conflicts by generating new UUIDs
     console.log('Preparing minimal migration with new IDs...');
     
-    const timestamp = Date.now();
-    const minimalRecords = historyRecords.map((record, index) => {
+    const minimalRecords = historyRecords.map((record) => {
       // Check if ID already exists in destination
       const needsNewId = existingIds.has(record.id);
-      const id = needsNewId ? `migrated-${timestamp}-${index}` : record.id;
+      
+      // Generate proper UUID v4 if needed, otherwise use existing ID
+      const id = needsNewId ? uuidv4() : record.id;
       
       return {
         id,
@@ -612,7 +628,7 @@ export async function migrateMeditationHistory(): Promise<boolean> {
     });
     
     // Insert with small batches
-    const BATCH_SIZE = 1; // One at a time to maximize success chances
+    const BATCH_SIZE = 10; // Increase batch size for efficiency
     let successCount = 0;
     let errorCount = 0;
     
@@ -623,11 +639,11 @@ export async function migrateMeditationHistory(): Promise<boolean> {
         .insert(batch);
 
       if (insertError) {
-        console.error(`Error inserting record ${i+1}:`, insertError);
+        console.error(`Error inserting batch starting at ${i}:`, insertError);
         errorCount += batch.length;
       } else {
         successCount += batch.length;
-        console.log(`Migrated record ${i+1} successfully`);
+        console.log(`Migrated batch starting at ${i} successfully (${batch.length} records)`);
       }
       
       // Small delay to avoid rate limits
