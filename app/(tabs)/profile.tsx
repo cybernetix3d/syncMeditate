@@ -17,6 +17,7 @@ import { COLORS, COMMON_STYLES } from '@/src/constants/Styles';
 import Button from '@/src/components/common/Button';
 import type { UserProfile } from '@/src/context/AuthProvider';
 import { supabase } from '@/src/api/supabase';
+import UserRequests from '@/src/components/meditation/UserRequests';
 
 // Improved type guard function
 const isUserProfile = (user: null | boolean | UserProfile): user is UserProfile => {
@@ -36,7 +37,7 @@ interface Badge {
   id: string;
   name: string;
   description: string;
-  icon: string;
+  icon: keyof typeof Ionicons.glyphMap;
   achieved: boolean;
   progress?: number;
   maxProgress?: number;
@@ -190,45 +191,25 @@ export default function ProfileScreen() {
       try {
         setLoading(true);
         
-        // Fetch all user meditation sessions from both tables
-        const [completionsResult, historyResult] = await Promise.all([
-          // Fetch from meditation_completions (newer system)
-          supabase
-            .from('meditation_completions')
-            .select('user_id, duration, completed_at, event_id, meditation_type')
-            .eq('user_id', user.id),
-          
-          // Fetch from user_meditation_history (older system)
-          supabase
-            .from('user_meditation_history')
-            .select('user_id, duration, date, event_id')
-            .eq('user_id', user.id)
-        ]);
+        // Fetch all user meditation sessions from user_meditation_history
+        const { data: history, error: historyError } = await supabase
+          .from('user_meditation_history')
+          .select('user_id, duration, date, event_id')
+          .eq('user_id', user.id);
         
-        if (completionsResult.error) {
-          console.error('Error fetching meditation_completions:', completionsResult.error);
+        if (historyError) {
+          console.error('Error fetching user_meditation_history:', historyError);
+          throw historyError;
         }
         
-        if (historyResult.error) {
-          console.error('Error fetching user_meditation_history:', historyResult.error);
-        }
+        // Process history data
+        const totalSessions = history?.length || 0;
         
-        // Process completions data
-        const completions = completionsResult.data || [];
-        const history = historyResult.data || [];
-        
-        // Combine both sources for total counts
-        const totalSessions = completions.length + history.length;
-        
-        // Total minutes - Note: Completions duration is in minutes, history is in seconds
-        const completionsMinutes = completions.reduce((total, item) => total + (item.duration || 0), 0);
-        const historyMinutes = history.reduce((total, item) => total + ((item.duration || 0) / 60), 0);
-        const totalMinutes = Math.round(completionsMinutes + historyMinutes);
+        // Convert seconds to minutes
+        const totalMinutes = Math.round(history?.reduce((total, item) => total + ((item.duration || 0) / 60), 0) || 0);
         
         // Get all session dates for streak calculation
-        const completionDates = completions.map(item => item.completed_at || new Date().toISOString());
-        const historyDates = history.map(item => item.date || new Date().toISOString());
-        const allSessionDates = [...completionDates, ...historyDates];
+        const allSessionDates = history?.map(item => item.date || new Date().toISOString()) || [];
         
         // Calculate streak
         const { currentStreak, longestStreak } = calculateStreak(allSessionDates);
@@ -327,7 +308,7 @@ export default function ProfileScreen() {
           onPress: async () => {
             try {
               await signOut();
-              router.replace('/(auth)/sign-in');
+              router.replace('/');
             } catch (error: any) {
               console.error('Sign out error:', error);
               Alert.alert('Error', error.message || 'Failed to sign out. Please try again.');
@@ -506,6 +487,12 @@ export default function ProfileScreen() {
               Activity calendar coming soon!
             </Text>
           </View>
+        </View>
+
+        {/* Your Requests Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.primary }]}>Your Requests</Text>
+          <UserRequests />
         </View>
 
         {(!isUserProfile(user) || !user.email) && (

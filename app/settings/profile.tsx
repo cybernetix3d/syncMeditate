@@ -98,65 +98,73 @@ export default function ProfileSettingsScreen() {
     try {
       setUploading(true);
       console.log('Starting upload process...', { source });
-
+  
       if (!isUserProfile(user)) {
         throw new Error('No valid user profile');
       }
-
-      let blob: Blob;
+  
+      let mediaData: Blob;
+      
       if (source instanceof File) {
         // For web, use the File object directly
-        blob = source;
+        mediaData = source;
+        console.log('Blob created from File, size:', mediaData.size, 'bytes');
       } else {
-        // For native platforms, fetch the blob
-        const response = await fetch(source);
-        blob = await response.blob();
+        // For native platforms, always convert to blob
+        console.log('Fetching image from URI:', source);
+        try {
+          const response = await fetch(source);
+          mediaData = await response.blob();
+          console.log('Blob created from URI, size:', mediaData.size, 'bytes');
+        } catch (blobError) {
+          console.error('Error creating blob:', blobError);
+          throw new Error('Failed to process image data: ' + blobError.message);
+        }
       }
-
-      console.log('Blob created, size:', blob.size, 'bytes');
-
+  
       // Generate file name with timestamp and random string for uniqueness
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
       const fileName = `${user.id}-${timestamp}-${random}.jpg`;
       console.log('Uploading as:', fileName);
-
-      // Upload to Supabase storage
-      const { error: uploadError, data: uploadData } = await supabase.storage
+  
+      // Upload to Supabase storage with explicit MIME type
+      const { error: uploadError, data: uploadResult } = await supabase.storage
         .from('avatars')
-        .upload(fileName, blob, {
+        .upload(fileName, mediaData, {
           contentType: 'image/jpeg',
           upsert: false // Don't overwrite existing files
         });
-
+  
       if (uploadError) {
         console.error('Upload error details:', uploadError);
         throw new Error(`Upload failed: ${uploadError.message}`);
       }
-
+  
       console.log('Upload successful, getting URL...');
-
+  
       // Get public URL
       const { data: urlData } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName);
-
+  
       if (!urlData?.publicUrl) {
         throw new Error('Failed to get public URL for uploaded file');
       }
-
+  
       console.log('Generated public URL:', urlData.publicUrl);
-
-      // Update user profile with new avatar URL
+  
+      // Update user profile with new avatar URL with a timestamp to force refresh
+      const refreshedUrl = `${urlData.publicUrl}?t=${Date.now()}`;
       const { error: updateError } = await updateUserProfile({
-        avatar_url: urlData.publicUrl
+        avatar_url: refreshedUrl
       });
-
+  
       if (updateError) {
         console.error('Profile update error:', updateError);
         throw new Error(`Profile update failed: ${updateError.message}`);
       }
-
+  
       console.log('Profile updated successfully with new avatar');
       Alert.alert('Success', 'Profile photo updated successfully.');
     } catch (error: any) {

@@ -510,7 +510,7 @@ export default function CreateEventScreen() {
                 onPress={() => setTradition(t.id)}
               >
                 <Ionicons 
-                  name={t.icon as any} 
+                  name={t.ionicon} 
                   size={20} 
                   color={tradition === t.id ? COLORS.white : colors.gray} 
                 />

@@ -7,7 +7,7 @@ export interface FaithTradition {
   id: string;
   name: string;
   description: string;
-  icon: string;
+  ionicon: keyof typeof Ionicons.glyphMap;
   color: string;
   image?: ImageSourcePropType;
   prayerLabel: string;
@@ -19,7 +19,7 @@ export const FAITH_TRADITIONS: FaithTradition[] = [
     id: 'secular',
     name: 'Secular',
     description: 'A non-religious, mindfulness-based approach',
-    icon: '🧘',
+    ionicon: 'leaf',
     color: COLORS.secondary,
     prayerLabel: 'Intention',
     healingLabel: 'Wellness',
@@ -28,7 +28,7 @@ export const FAITH_TRADITIONS: FaithTradition[] = [
     id: 'buddhist',
     name: 'Buddhist',
     description: 'Following the teachings of Buddha',
-    icon: '☸️',
+    ionicon: 'flower',
     color: '#FFA726',
     prayerLabel: 'Metta',
     healingLabel: 'Healing',
@@ -37,7 +37,7 @@ export const FAITH_TRADITIONS: FaithTradition[] = [
     id: 'christian',
     name: 'Christian',
     description: 'Following the teachings of Jesus Christ',
-    icon: '✝️',
+    ionicon: 'heart',
     color: '#EC407A',
     prayerLabel: 'Prayer',
     healingLabel: 'Divine Healing',
@@ -46,7 +46,7 @@ export const FAITH_TRADITIONS: FaithTradition[] = [
     id: 'hindu',
     name: 'Hindu',
     description: 'Following Sanātana Dharma',
-    icon: '🕉️',
+    ionicon: 'infinite',
     color: '#FF7043',
     prayerLabel: 'Prarthana',
     healingLabel: 'Healing',
@@ -55,7 +55,7 @@ export const FAITH_TRADITIONS: FaithTradition[] = [
     id: 'jewish',
     name: 'Jewish',
     description: 'Following Judaism',
-    icon: '✡️',
+    ionicon: 'star',
     color: '#42A5F5',
     prayerLabel: 'Tefillah',
     healingLabel: 'Refuah',
@@ -64,7 +64,7 @@ export const FAITH_TRADITIONS: FaithTradition[] = [
     id: 'muslim',
     name: 'Muslim',
     description: 'Following Islam',
-    icon: '☪️',
+    ionicon: 'moon',
     color: '#66BB6A',
     prayerLabel: 'Dua',
     healingLabel: 'Shifa',
@@ -73,7 +73,7 @@ export const FAITH_TRADITIONS: FaithTradition[] = [
     id: 'spiritual',
     name: 'Spiritual',
     description: 'A personal spiritual practice',
-    icon: '🌟',
+    ionicon: 'sunny',
     color: '#8D6E63',
     prayerLabel: 'Intention',
     healingLabel: 'Energy Healing',
@@ -82,7 +82,7 @@ export const FAITH_TRADITIONS: FaithTradition[] = [
     id: 'other',
     name: 'Other',
     description: 'Other faith traditions',
-    icon: '🌈',
+    ionicon: 'grid',
     color: '#78909C',
     prayerLabel: 'Prayer',
     healingLabel: 'Healing',
@@ -129,7 +129,7 @@ const TraditionSelector: React.FC<TraditionSelectorProps> = ({
         activeOpacity={0.7}
       >
         <View style={[styles.iconContainer, { backgroundColor: tradition.color }]}>
-          <Ionicons name={tradition.icon as any} size={24} color={COLORS.white} />
+          <Ionicons name={tradition.ionicon} size={24} color={COLORS.white} />
         </View>
         <View style={styles.traditionTextContainer}>
           <Text style={styles.traditionName}>{tradition.name}</Text>
@@ -156,7 +156,7 @@ const TraditionSelector: React.FC<TraditionSelectorProps> = ({
         activeOpacity={0.7}
       >
         <View style={[styles.iconContainer, { backgroundColor: selectedTraditionObj.color }]}>
-          <Ionicons name={selectedTraditionObj.icon as any} size={24} color={COLORS.white} />
+          <Ionicons name={selectedTraditionObj.ionicon} size={24} color={COLORS.white} />
         </View>
         <View style={styles.selectedTextContainer}>
           <Text style={styles.selectedName}>{selectedTraditionObj.name}</Text>
@@ -170,13 +170,16 @@ const TraditionSelector: React.FC<TraditionSelectorProps> = ({
       </TouchableOpacity>
       
       {expanded && (
-        <ScrollView
-          style={styles.traditionsScrollContainer}
-          contentContainerStyle={styles.traditionsScrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {FAITH_TRADITIONS.map(renderTraditionCard)}
-        </ScrollView>
+        <View style={styles.expandedContainer}>
+          <ScrollView
+            style={styles.traditionsScrollContainer}
+            contentContainerStyle={styles.traditionsScrollContent}
+            showsVerticalScrollIndicator={true}
+            nestedScrollEnabled={true}
+          >
+            {FAITH_TRADITIONS.map(renderTraditionCard)}
+          </ScrollView>
+        </View>
       )}
     </View>
   );
@@ -195,6 +198,10 @@ const TraditionSelector: React.FC<TraditionSelectorProps> = ({
 };
 
 const styles = StyleSheet.create({
+  expandedContainer: {
+    flex: 1,
+    maxHeight: 400,
+  },
   compactContainer: {
     width: '100%',
     marginVertical: 10,
@@ -226,7 +233,7 @@ const styles = StyleSheet.create({
     color: COLORS.gray,
   },
   traditionsScrollContainer: {
-    maxHeight: 300,
+    maxHeight: 400,
   },
   traditionsScrollContent: {
     paddingBottom: 10,
@@ -256,6 +263,8 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 0,
+    overflow: 'hidden',
   },
   traditionTextContainer: {
     flex: 1,

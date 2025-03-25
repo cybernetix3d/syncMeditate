@@ -696,61 +696,203 @@ export const getMeditationEventById = async (id: string) => {
 };
 
 // Helper function to ensure meditation requests table exists
-export const ensureMeditationRequestsTable = async (): Promise<boolean> => {
+export async function ensureMeditationRequestsTable() {
   try {
-    console.log('Checking meditation_requests table...');
-    
-    // First check if the table exists
-    const { error: checkError } = await supabase
+    // First try to select from the table to check if it exists
+    const { error: selectError } = await supabase
       .from('meditation_requests')
       .select('id')
       .limit(1);
 
-    if (checkError) {
-      console.log('Table check failed, attempting to create table...');
-      
-      // Create the table using a minimal approach that should work with limited permissions
-      const { error: createError } = await supabase
-        .from('meditation_requests')
-        .insert({
-          id: '00000000-0000-0000-0000-000000000000',
-          user_id: '00000000-0000-0000-0000-000000000000',
-          request_type: 'prayer',
-          focus_area: 'Initial setup',
-          is_active: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .select();
+    if (selectError) {
+      // If table doesn't exist, create it
+      const { error: createError } = await supabase.rpc('create_meditation_requests_table', {
+        sql: `
+          -- Create enum type for request types
+          DO $$ BEGIN
+            CREATE TYPE request_type AS ENUM ('prayer', 'healing', 'vibe', 'meditation');
+          EXCEPTION
+            WHEN duplicate_object THEN null;
+          END $$;
 
-      if (createError && !createError.message.includes('duplicate key')) {
-        console.error('Failed to create table:', createError);
-        return false;
+          -- Create meditation_requests table
+          CREATE TABLE IF NOT EXISTS meditation_requests (
+            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+            user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+            request_type request_type NOT NULL,
+            tradition TEXT,
+            full_name TEXT,
+            image_url TEXT,
+            location TEXT,
+            location_precision TEXT,
+            focus_area TEXT NOT NULL,
+            desired_outcome TEXT,
+            is_anonymous BOOLEAN DEFAULT false,
+            is_active BOOLEAN DEFAULT true,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+          );
+
+          -- Enable RLS
+          ALTER TABLE meditation_requests ENABLE ROW LEVEL SECURITY;
+
+          -- Create policies
+          DROP POLICY IF EXISTS "Anyone can view active requests" ON meditation_requests;
+          CREATE POLICY "Anyone can view active requests" ON meditation_requests
+            FOR SELECT USING (is_active = true);
+
+          DROP POLICY IF EXISTS "Anyone can create requests" ON meditation_requests;
+          CREATE POLICY "Anyone can create requests" ON meditation_requests
+            FOR INSERT WITH CHECK (true);
+
+          DROP POLICY IF EXISTS "Users can update their own requests" ON meditation_requests;
+          CREATE POLICY "Users can update their own requests" ON meditation_requests
+            FOR UPDATE USING (auth.uid() = user_id);
+
+          -- Create updated_at trigger
+          CREATE OR REPLACE FUNCTION update_updated_at_column()
+          RETURNS TRIGGER AS $$
+          BEGIN
+            NEW.updated_at = NOW();
+            RETURN NEW;
+          END;
+          $$ language 'plpgsql';
+
+          DROP TRIGGER IF EXISTS update_meditation_requests_updated_at ON meditation_requests;
+          CREATE TRIGGER update_meditation_requests_updated_at
+            BEFORE UPDATE ON meditation_requests
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+
+          -- Grant permissions
+          GRANT ALL ON meditation_requests TO authenticated;
+          GRANT ALL ON meditation_requests TO anon;
+        `
+      });
+
+      if (createError) {
+        console.error('Error creating meditation_requests table:', createError);
+        throw createError;
       }
     }
 
-    // Try to enable RLS and policies through direct table operations
-    try {
-      // Test if we can insert as an authenticated user
-      const { error: insertError } = await supabase
-        .from('meditation_requests')
-        .insert({
-          request_type: 'prayer',
-          focus_area: 'Test request',
-          is_active: false
-        })
-        .select();
+    // Check if meditation_completions table exists
+    const { error: completionsError } = await supabase
+      .from('meditation_completions')
+      .select('id')
+      .limit(1);
 
-      if (insertError && !insertError.message.includes('permission denied')) {
-        console.error('Error testing insert permissions:', insertError);
+    if (completionsError) {
+      // Create meditation_completions table if it doesn't exist
+      const { error: createCompletionsError } = await supabase.rpc('create_meditation_completions_table', {
+        sql: `
+          CREATE TABLE IF NOT EXISTS meditation_completions (
+            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+            user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+            duration INTEGER NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+
+          -- Enable RLS
+          ALTER TABLE meditation_completions ENABLE ROW LEVEL SECURITY;
+
+          -- Create policies
+          DROP POLICY IF EXISTS "Users can view their own completions" ON meditation_completions;
+          CREATE POLICY "Users can view their own completions" ON meditation_completions
+            FOR SELECT USING (auth.uid() = user_id);
+
+          DROP POLICY IF EXISTS "Users can create their own completions" ON meditation_completions;
+          CREATE POLICY "Users can create their own completions" ON meditation_completions
+            FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+          -- Grant permissions
+          GRANT ALL ON meditation_completions TO authenticated;
+        `
+      });
+
+      if (createCompletionsError) {
+        console.error('Error creating meditation_completions table:', createCompletionsError);
+        throw createCompletionsError;
       }
-    } catch (error) {
-      console.error('Error setting up permissions:', error);
+    }
+
+    // Enable RLS on both tables
+    const { error: enableRLSError } = await supabase.rpc('execute_sql', {
+      sql: `
+        ALTER TABLE meditation_requests ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE meditation_completions ENABLE ROW LEVEL SECURITY;
+      `
+    });
+
+    if (enableRLSError) {
+      console.error('Error enabling RLS:', enableRLSError);
+      throw enableRLSError;
+    }
+
+    // Grant necessary permissions
+    const { error: grantError } = await supabase.rpc('execute_sql', {
+      sql: `
+        GRANT ALL ON meditation_requests TO authenticated;
+        GRANT ALL ON meditation_requests TO anon;
+        GRANT ALL ON meditation_completions TO authenticated;
+      `
+    });
+
+    if (grantError) {
+      console.error('Error granting permissions:', grantError);
+      throw grantError;
+    }
+
+    // Notify PostgREST to reload the schema
+    await supabase.rpc('execute_sql', {
+      sql: `NOTIFY pgrst, 'reload schema';`
+    });
+
+  } catch (error) {
+    console.error('Error in ensureMeditationRequestsTable:', error);
+    throw error;
+  }
+}
+
+export async function initializeApp() {
+  try {
+    // Initialize Supabase client
+    await initializeSupabase();
+
+    // Check if user is authenticated
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+
+    if (session?.user) {
+      // Check if user profile exists
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        throw profileError;
+      }
+
+      // If no profile exists, create one
+      if (!profile) {
+        const { error: createError } = await supabase
+          .from('user_profiles')
+        .insert({
+            id: session.user.id,
+            email: session.user.email,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+
+        if (createError) throw createError;
+      }
     }
 
     return true;
-  } catch (err) {
-    console.error('Failed to create meditation_requests table:', err);
+  } catch (error) {
+    console.error('Error initializing app:', error);
     return false;
   }
-};
+}

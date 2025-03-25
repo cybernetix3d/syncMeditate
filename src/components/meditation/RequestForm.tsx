@@ -10,6 +10,7 @@ import {
   Alert,
   Platform
 } from 'react-native';
+import { decode as base64Decode } from 'base-64';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../context/ThemeContext';
@@ -50,73 +51,160 @@ export default function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please grant permission to access your photos.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0] && user && typeof user !== 'boolean') {
-      try {
-        let blob: Blob;
-        const uri = result.assets[0].uri;
-
-        if (Platform.OS === 'web') {
-          // For web, we need to fetch the data differently
-          const response = await fetch(uri);
-          blob = await response.blob();
-        } else {
-          // For native platforms, we can use the URI directly
-          const response = await fetch(uri);
-          blob = await response.blob();
-        }
-
-        // Generate a unique filename with proper extension
-        const fileInfo = uri.match(/^.*[/\\](.*?)(\?.*)?$/);
-        const fileName = fileInfo ? fileInfo[1] : `${Date.now()}.jpg`;
-        const filePath = `${user.id}/${Date.now()}-${fileName}`;
-
-        console.log('Uploading image:', {
-          size: blob.size,
-          type: blob.type,
-          path: filePath
+    try {
+      if (Platform.OS === 'web') {
+        // Web code remains the same
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        
+        const fileSelected = new Promise<File>((resolve) => {
+          input.onchange = async (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (file) {
+              resolve(file);
+            }
+          };
         });
+        
+        input.click();
+        
+        const file = await fileSelected;
+        await uploadImage(file);
+      } else {
+        // For mobile, modify the approach
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Please grant camera roll permissions to upload an image.');
+          return;
+        }
+  
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+          base64: true,
+        });
+  
+        console.log('Image picker result:', {
+          canceled: result.canceled,
+          assets: result.assets ? result.assets.length : 0
+        });
+  
+        if (!result.canceled && result.assets && result.assets[0]) {
+          console.log('Selected asset info:', {
+            uri: result.assets[0].uri.substring(0, 50) + '...',
+            type: result.assets[0].type || 'unknown',
+            hasBase64: !!result.assets[0].base64
+          });
+          
+          if (result.assets[0].base64) {
+            // Just use the base64 directly
+            await uploadImage(result.assets[0].uri, result.assets[0].base64);
+          } else if (result.assets[0].uri) {
+            // No base64, use URI
+            await uploadImage(result.assets[0].uri);
+          } else {
+            Alert.alert('Error', 'Selected image has no usable data');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
 
-        // Upload to Supabase Storage
-        const { data, error } = await supabase.storage
+  const uploadImage = async (source: string | File, base64Data?: string) => {
+    try {
+      if (!user || typeof user === 'boolean') {
+        throw new Error('No valid user profile');
+      }
+  
+      let uploadData: string | Blob;
+      let isBase64Upload = false;
+      
+      if (source instanceof File) {
+        // For web, use the File object directly
+        uploadData = source;
+        console.log('Upload data prepared from File');
+      } else if (base64Data) {
+        // For mobile with base64, use it directly
+        uploadData = base64Data;
+        isBase64Upload = true;
+        console.log('Using direct base64 data for upload, length:', base64Data.length);
+      } else {
+        // For native platforms, fetch the blob from URI
+        console.log('Fetching image from URI:', source);
+        try {
+          const response = await fetch(source);
+          uploadData = await response.blob();
+          console.log('Upload data prepared from URI blob');
+        } catch (error) {
+          console.error('Error fetching from URI:', error);
+          throw new Error('Failed to fetch image data');
+        }
+      }
+  
+      // Generate file name with timestamp and random string for uniqueness
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const fileName = `${user.id}/${timestamp}-${random}.jpg`;
+      
+      console.log('Uploading as:', fileName);
+  
+      // Upload to Supabase storage, handling base64 data differently
+      let uploadResult;
+      if (isBase64Upload) {
+        // For base64 data, we need to specify that it's base64 encoded
+        uploadResult = await supabase.storage
           .from('meditation-requests')
-          .upload(filePath, blob, {
-            contentType: blob.type || 'image/jpeg',
-            cacheControl: '3600',
+          .upload(fileName, uploadData, {
+            contentType: 'image/jpeg',
+            upsert: false,
+            encoding: 'base64'
+          });
+      } else {
+        // For blobs and files, use the standard upload
+        uploadResult = await supabase.storage
+          .from('meditation-requests')
+          .upload(fileName, uploadData, {
+            contentType: 'image/jpeg',
             upsert: false
           });
-
-        if (error) {
-          console.error('Storage upload error:', error);
-          throw error;
-        }
-
-        // Get the public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('meditation-requests')
-          .getPublicUrl(filePath);
-
-        console.log('Image uploaded successfully:', publicUrl);
-        setImage(publicUrl);
-      } catch (error) {
-        console.error('Error uploading image:', error);
-        Alert.alert(
-          'Upload Error',
-          'Failed to upload image. Please try again or choose a different image.'
-        );
       }
+  
+      if (uploadResult.error) {
+        console.error('Upload error details:', uploadResult.error);
+        throw new Error(`Upload failed: ${uploadResult.error.message}`);
+      }
+  
+      console.log('Upload successful, getting URL...');
+  
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('meditation-requests')
+        .getPublicUrl(fileName);
+  
+      if (!urlData?.publicUrl) {
+        throw new Error('Failed to get public URL for uploaded file');
+      }
+  
+      // Ensure the URL is properly formatted and add cache buster
+      const formattedUrl = `${urlData.publicUrl.replace(/\s/g, '%20')}?t=${Date.now()}`;
+      console.log('Generated public URL:', formattedUrl);
+  
+      // Set the image URL
+      setImage(formattedUrl);
+  
+    } catch (error: any) {
+      console.error('Full error details:', error);
+      Alert.alert(
+        'Upload Error',
+        `Failed to upload image: ${error?.message || 'Unknown error'}. Please try again.`
+      );
     }
   };
 
@@ -247,7 +335,11 @@ export default function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
         <View style={styles.imageSection}>
           <TouchableOpacity onPress={pickImage} style={styles.imagePicker}>
             {image ? (
-              <Image source={{ uri: image }} style={styles.selectedImage} />
+              <Image 
+                source={{ uri: image }} 
+                style={styles.selectedImage} 
+                onError={(e) => console.error('Image loading error:', e.nativeEvent.error)}
+              />
             ) : (
               <View style={[styles.imagePickerPlaceholder, { backgroundColor: colors.surface }]}>
                 <Ionicons name="image-outline" size={24} color={colors.gray} />

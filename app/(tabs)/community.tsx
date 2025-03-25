@@ -65,14 +65,27 @@ export default function CommunityScreen() {
 
       /** 1) Count total registered users (optional) */
       let totalUsers = 0;
-      const { count: userCount, error: userCountError } = await supabase
+      
+      // Get ALL users with a single query
+      const { count: userCount, error: countError } = await supabase
         .from('users')
         .select('id', { count: 'exact', head: true });
-      if (userCountError) {
-        console.error('Error counting users:', userCountError);
+
+      if (countError) {
+        console.error('Error counting users:', countError);
       } else {
-        // If you want a minimum to show in UI, do:
-        totalUsers = Math.max(userCount || 0, 6);
+        // Show actual count if above 10, otherwise show minimum of 10
+        totalUsers = Math.max(userCount || 0, 10);
+        console.log('Total community size (with minimum):', totalUsers);
+      }
+
+      // Log the full data for debugging
+      const { data: allUsers, error: debugError } = await supabase
+        .from('users')
+        .select('id, email, display_name');
+      
+      if (!debugError) {
+        console.log('Debug - All users:', allUsers?.length);
       }
 
       /** 2) Count how many are currently active (optional) */
@@ -124,7 +137,12 @@ export default function CommunityScreen() {
         const totalSeconds = historyData.reduce((acc, row) => {
           return acc + (row.duration || 0);
         }, 0);
-        globalMinutes = Math.floor(totalSeconds / 60);
+        globalMinutes = Math.round(totalSeconds / 60);
+        console.log('Debug - Total meditation time:', {
+          seconds: totalSeconds,
+          minutes: globalMinutes,
+          hours: Math.round(globalMinutes / 60)
+        });
       }
 
       // Optionally, if you also track minutes from participants or events, add them.
@@ -270,7 +288,7 @@ export default function CommunityScreen() {
             </View>
             <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
               <Text style={[styles.statValue, { color: colors.primary }]}>
-                {Math.floor(stats.global_minutes / 60).toLocaleString()}h
+                {Math.round(stats.global_minutes / 60).toLocaleString()}h
               </Text>
               <Text style={[styles.statLabel, { color: colors.gray }]}>Total Hours</Text>
             </View>
@@ -279,31 +297,41 @@ export default function CommunityScreen() {
           {/* Global Activity */}
           <View style={COMMON_STYLES.section}>
             <Text style={COMMON_STYLES.sectionTitle}>Global Activity</Text>
-            <View style={styles.activityContainer}>
+            <View style={[styles.activityContainer, { backgroundColor: colors.surface }]}>
               <View style={styles.activityChart}>
-                {globalActivity.map((activity, index) => (
-                  <View key={index} style={styles.activityBarContainer}>
-                    <View
-                      style={[
-                        styles.activityBar,
-                        {
-                          height: Math.max((activity.count / 50) * 100, 5),
-                          backgroundColor:
-                            index % 3 === 0
-                              ? COLORS.primary
-                              : index % 3 === 1
-                              ? COLORS.secondary
-                              : COLORS.accent,
-                        },
-                      ]}
-                    />
-                    <Text style={styles.activityTime}>{activity.time}</Text>
-                  </View>
-                ))}
+                {globalActivity.map((activity, index) => {
+                  // Find the maximum count to scale relative to
+                  const maxCount = Math.max(...globalActivity.map(a => a.count), 1);
+                  // Calculate height as percentage of max (minimum 10% for visibility)
+                  const heightPercentage = Math.max((activity.count / maxCount) * 100, 10);
+                  
+                  return (
+                    <View key={index} style={styles.activityBarContainer}>
+                      <View
+                        style={[
+                          styles.activityBar,
+                          {
+                            height: `${heightPercentage}%`,
+                            backgroundColor: activity.count > 0 ? colors.primary : colors.lightGray,
+                            opacity: activity.count > 0 ? 1 : 0.5,
+                          },
+                        ]}
+                      />
+                      <Text style={[styles.activityTime, { color: colors.gray }]}>
+                        {activity.time}
+                      </Text>
+                      {activity.count > 0 && (
+                        <Text style={[styles.activityCount, { color: colors.primary }]}>
+                          {activity.count}
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
               </View>
               <View style={styles.activityLegend}>
-                <Text style={styles.activityLegendText}>
-                  Recent participants (last 24 hours)
+                <Text style={[styles.activityLegendText, { color: colors.gray }]}>
+                  Meditation activity over the last 24 hours
                 </Text>
               </View>
             </View>
@@ -340,7 +368,7 @@ export default function CommunityScreen() {
                 return (
                   <View key={t.tradition} style={styles.traditionCard}>
                     <View style={[COMMON_STYLES.iconContainer, { backgroundColor: found.color }]}>
-                      <Ionicons name={found.icon as any} size={24} color={COLORS.white} />
+                      <Ionicons name={found.ionicon} size={24} color={COLORS.white} />
                     </View>
                     <View style={styles.traditionContent}>
                       <Text style={styles.traditionName}>{found.name}</Text>
@@ -436,9 +464,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   activityContainer: {
-    backgroundColor: COLORS.white,
     borderRadius: 12,
     padding: 15,
+    marginHorizontal: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -447,30 +475,42 @@ const styles = StyleSheet.create({
   },
   activityChart: {
     flexDirection: 'row',
-    height: 120,
+    height: 150,
     alignItems: 'flex-end',
     paddingBottom: 20,
+    paddingTop: 20,
   },
   activityBarContainer: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: '100%',
   },
   activityBar: {
-    width: 8,
-    borderRadius: 4,
+    width: 6,
+    borderRadius: 3,
+    minHeight: 4,
   },
   activityTime: {
     fontSize: 10,
-    color: COLORS.gray,
     marginTop: 5,
+    transform: [{ rotate: '-45deg' }],
+  },
+  activityCount: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    position: 'absolute',
+    top: -15,
   },
   activityLegend: {
-    marginTop: 10,
+    marginTop: 15,
     alignItems: 'center',
+    paddingTop: 5,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.lightGray,
   },
   activityLegendText: {
     fontSize: 12,
-    color: COLORS.gray,
     textAlign: 'center',
   },
   joinGlobalContainer: {
