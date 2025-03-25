@@ -153,15 +153,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const initializeAuth = async () => {
       try {
-        console.log('Initializing auth...');
         setLoading(true);
         setError(null);
         
         // Check Supabase connection first
-        console.log('Checking Supabase connection...');
         const isConnected = await checkSupabaseConnection();
         if (!isConnected) {
-          console.error('Failed to connect to Supabase');
           if (mounted) {
             setError(new Error('Failed to connect to authentication service'));
             setUser(false);
@@ -170,12 +167,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         
-        console.log('Getting current session...');
         // Get the current session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
-          console.error('Error getting session:', sessionError);
           if (mounted) {
             setError(sessionError);
             setUser(false);
@@ -188,7 +183,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (mounted) {
           setSession(session);
           if (!session?.user) {
-            console.log('No session found, setting user to false');
             setUser(false);
             setLoading(false);
             return;
@@ -196,7 +190,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         
         if (session?.user) {
-          console.log('Session found, fetching user profile for:', session.user.id);
           try {
             const { data: profile, error: profileError } = await supabase
               .from('users')
@@ -205,7 +198,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               .single();
 
             if (profileError) {
-              console.error('Error fetching profile:', profileError);
               if (mounted) {
                 setUser(true); // User exists but no profile
                 setLoading(false);
@@ -214,7 +206,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
 
             if (profile && mounted) {
-              console.log('Profile found:', profile);
               setUser({
                 id: profile.id,
                 email: profile.email,
@@ -225,11 +216,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 faith_preferences: profile.faith_preferences
               });
             } else {
-              console.log('No profile found, setting user to true');
               setUser(true); // User exists but no profile
             }
           } catch (error) {
-            console.error('Error in profile fetch:', error);
             if (mounted) {
               setUser(true); // User exists but error fetching profile
             }
@@ -242,7 +231,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-          console.log(`Auth state changed: ${event}`);
           if (mounted) {
             setSession(session);
             
@@ -260,10 +248,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 .single();
 
               if (profileError) {
-                console.log('No profile found after auth change');
                 setUser(true); // User exists but no profile
               } else if (profile) {
-                console.log('Profile found after auth change:', profile);
                 setUser({
                   id: profile.id,
                   email: profile.email,
@@ -275,7 +261,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 });
               }
             } catch (error) {
-              console.error('Error fetching profile after auth change:', error);
               setUser(true); // User exists but error fetching profile
             } finally {
               setLoading(false);
@@ -287,7 +272,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           subscription.unsubscribe();
         };
       } catch (error) {
-        console.error('Error in auth initialization:', error);
         if (mounted) {
           setError(error as Error);
           setUser(false);

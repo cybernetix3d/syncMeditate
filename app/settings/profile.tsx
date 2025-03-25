@@ -97,48 +97,47 @@ export default function ProfileSettingsScreen() {
   const uploadAvatar = async (source: string | File) => {
     try {
       setUploading(true);
-      console.log('Starting upload process...', { source });
+      console.log('Starting upload process...', { source: typeof source === 'string' ? source.substring(0, 50) + '...' : 'File object' });
   
       if (!isUserProfile(user)) {
         throw new Error('No valid user profile');
       }
   
-      let mediaData: Blob;
-      
-      if (source instanceof File) {
-        // For web, use the File object directly
-        mediaData = source;
-        console.log('Blob created from File, size:', mediaData.size, 'bytes');
-      } else {
-        // For native platforms, always convert to blob
-        console.log('Fetching image from URI:', source);
-        try {
-          const response = await fetch(source);
-          mediaData = await response.blob();
-          console.log('Blob created from URI, size:', mediaData.size, 'bytes');
-        } catch (blobError) {
-          console.error('Error creating blob:', blobError);
-          throw new Error('Failed to process image data: ' + blobError.message);
-        }
-      }
-  
       // Generate file name with timestamp and random string for uniqueness
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      const fileName = `${user.id}-${timestamp}-${random}.jpg`;
+      const fileName = `${user.id}-${timestamp}-${random}.jpeg`;
+      
       console.log('Uploading as:', fileName);
   
-      // Upload to Supabase storage with explicit MIME type
-      const { error: uploadError, data: uploadResult } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, mediaData, {
-          contentType: 'image/jpeg',
-          upsert: false // Don't overwrite existing files
-        });
+      if (source instanceof File) {
+        // For web, use File directly (known to work)
+        const { error } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, source, {
+            contentType: 'image/jpeg',
+            upsert: false
+          });
   
-      if (uploadError) {
-        console.error('Upload error details:', uploadError);
-        throw new Error(`Upload failed: ${uploadError.message}`);
+        if (error) throw error;
+      } else {
+        // For mobile platforms, use the approach that works for RequestForm
+        const fileObject = {
+          uri: source,
+          name: fileName,
+          type: 'image/jpeg'
+        };
+        
+        console.log('Uploading with fileObject');
+        
+        const { error } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, fileObject as any, {
+            contentType: 'image/jpeg',
+            upsert: false
+          });
+  
+        if (error) throw error;
       }
   
       console.log('Upload successful, getting URL...');
@@ -152,12 +151,13 @@ export default function ProfileSettingsScreen() {
         throw new Error('Failed to get public URL for uploaded file');
       }
   
-      console.log('Generated public URL:', urlData.publicUrl);
+      // Add cache buster to URL
+      const formattedUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+      console.log('Generated public URL:', formattedUrl);
   
-      // Update user profile with new avatar URL with a timestamp to force refresh
-      const refreshedUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+      // Update user profile with new avatar URL
       const { error: updateError } = await updateUserProfile({
-        avatar_url: refreshedUrl
+        avatar_url: formattedUrl
       });
   
       if (updateError) {

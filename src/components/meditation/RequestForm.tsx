@@ -72,7 +72,7 @@ export default function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
         const file = await fileSelected;
         await uploadImage(file);
       } else {
-        // For mobile, modify the approach
+        // For mobile, we just need a valid URI
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         
         if (status !== 'granted') {
@@ -80,12 +80,12 @@ export default function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
           return;
         }
   
+        // Don't request base64, it's not needed
         const result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           allowsEditing: true,
           aspect: [1, 1],
           quality: 0.8,
-          base64: true,
         });
   
         console.log('Image picker result:', {
@@ -94,21 +94,8 @@ export default function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
         });
   
         if (!result.canceled && result.assets && result.assets[0]) {
-          console.log('Selected asset info:', {
-            uri: result.assets[0].uri.substring(0, 50) + '...',
-            type: result.assets[0].type || 'unknown',
-            hasBase64: !!result.assets[0].base64
-          });
-          
-          if (result.assets[0].base64) {
-            // Just use the base64 directly
-            await uploadImage(result.assets[0].uri, result.assets[0].base64);
-          } else if (result.assets[0].uri) {
-            // No base64, use URI
-            await uploadImage(result.assets[0].uri);
-          } else {
-            Alert.alert('Error', 'Selected image has no usable data');
-          }
+          console.log('Selected asset URI:', result.assets[0].uri);
+          await uploadImage(result.assets[0].uri);
         }
       }
     } catch (error) {
@@ -117,68 +104,51 @@ export default function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
     }
   };
 
-  const uploadImage = async (source: string | File, base64Data?: string) => {
+  const uploadImage = async (source: string | File) => {
     try {
       if (!user || typeof user === 'boolean') {
         throw new Error('No valid user profile');
       }
   
-      let uploadData: string | Blob;
-      let isBase64Upload = false;
-      
-      if (source instanceof File) {
-        // For web, use the File object directly
-        uploadData = source;
-        console.log('Upload data prepared from File');
-      } else if (base64Data) {
-        // For mobile with base64, use it directly
-        uploadData = base64Data;
-        isBase64Upload = true;
-        console.log('Using direct base64 data for upload, length:', base64Data.length);
-      } else {
-        // For native platforms, fetch the blob from URI
-        console.log('Fetching image from URI:', source);
-        try {
-          const response = await fetch(source);
-          uploadData = await response.blob();
-          console.log('Upload data prepared from URI blob');
-        } catch (error) {
-          console.error('Error fetching from URI:', error);
-          throw new Error('Failed to fetch image data');
-        }
-      }
-  
       // Generate file name with timestamp and random string for uniqueness
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      const fileName = `${user.id}/${timestamp}-${random}.jpg`;
+      const fileName = `${user.id}/${timestamp}-${random}.jpeg`;
       
       console.log('Uploading as:', fileName);
   
-      // Upload to Supabase storage, handling base64 data differently
-      let uploadResult;
-      if (isBase64Upload) {
-        // For base64 data, we need to specify that it's base64 encoded
-        uploadResult = await supabase.storage
+      if (source instanceof File) {
+        // For web, use File directly (known to work)
+        const { error } = await supabase.storage
           .from('meditation-requests')
-          .upload(fileName, uploadData, {
-            contentType: 'image/jpeg',
-            upsert: false,
-            encoding: 'base64'
-          });
-      } else {
-        // For blobs and files, use the standard upload
-        uploadResult = await supabase.storage
-          .from('meditation-requests')
-          .upload(fileName, uploadData, {
+          .upload(fileName, source, {
             contentType: 'image/jpeg',
             upsert: false
           });
-      }
   
-      if (uploadResult.error) {
-        console.error('Upload error details:', uploadResult.error);
-        throw new Error(`Upload failed: ${uploadResult.error.message}`);
+        if (error) throw error;
+      } else {
+        // For mobile platforms, use React Native's native image picker approach
+        // First, let's try a more direct approach with the Supabase client
+        
+        // Create a simple file object that matches what the storage API expects
+        const fileObject = {
+          uri: source,
+          name: fileName,
+          type: 'image/jpeg'
+        };
+        
+        console.log('Uploading with fileObject:', { uri: source.substring(0, 50) + '...' });
+        
+        // Try to upload directly with the file object
+        const { error } = await supabase.storage
+          .from('meditation-requests')
+          .upload(fileName, fileObject as any, {
+            contentType: 'image/jpeg',
+            upsert: false
+          });
+  
+        if (error) throw error;
       }
   
       console.log('Upload successful, getting URL...');
@@ -192,11 +162,9 @@ export default function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
         throw new Error('Failed to get public URL for uploaded file');
       }
   
-      // Ensure the URL is properly formatted and add cache buster
-      const formattedUrl = `${urlData.publicUrl.replace(/\s/g, '%20')}?t=${Date.now()}`;
+      // Set the image URL with a cache-busting query parameter
+      const formattedUrl = `${urlData.publicUrl}?t=${Date.now()}`;
       console.log('Generated public URL:', formattedUrl);
-  
-      // Set the image URL
       setImage(formattedUrl);
   
     } catch (error: any) {
@@ -334,18 +302,21 @@ export default function RequestForm({ onSubmit, onCancel }: RequestFormProps) {
 
         <View style={styles.imageSection}>
           <TouchableOpacity onPress={pickImage} style={styles.imagePicker}>
-            {image ? (
-              <Image 
-                source={{ uri: image }} 
-                style={styles.selectedImage} 
-                onError={(e) => console.error('Image loading error:', e.nativeEvent.error)}
-              />
-            ) : (
-              <View style={[styles.imagePickerPlaceholder, { backgroundColor: colors.surface }]}>
-                <Ionicons name="image-outline" size={24} color={colors.gray} />
-                <Text style={[styles.imagePickerText, { color: colors.gray }]}>Add Photo</Text>
-              </View>
-            )}
+          {image ? (
+            <Image 
+              source={{ 
+                uri: image,
+                cache: 'reload'
+              }} 
+              style={styles.selectedImage} 
+              onError={(e) => console.error('Image loading error:', e.nativeEvent.error)}
+            />
+          ) : (
+            <View style={[styles.imagePickerPlaceholder, { backgroundColor: colors.surface }]}>
+              <Ionicons name="image-outline" size={24} color={colors.gray} />
+              <Text style={[styles.imagePickerText, { color: colors.gray }]}>Add Photo</Text>
+            </View>
+          )}
           </TouchableOpacity>
         </View>
 

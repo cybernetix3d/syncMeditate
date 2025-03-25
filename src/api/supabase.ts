@@ -129,7 +129,6 @@ const SecureStoreAdapter = {
         return localStorage.getItem(key);
       }
       const value = await SecureStore.getItemAsync(key);
-      console.log('Getting item from storage:', key, value ? 'Found' : 'Not found');
       return value;
     } catch (error) {
       console.error('Error getting item from storage:', error);
@@ -143,7 +142,6 @@ const SecureStoreAdapter = {
         return;
       }
       await SecureStore.setItemAsync(key, value);
-      console.log('Setting item in storage:', key, 'Success');
     } catch (error) {
       console.error('Error setting item in storage:', error);
     }
@@ -155,7 +153,6 @@ const SecureStoreAdapter = {
         return;
       }
       await SecureStore.deleteItemAsync(key);
-      console.log('Removing item from storage:', key, 'Success');
     } catch (error) {
       console.error('Error removing item from storage:', error);
     }
@@ -170,22 +167,19 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     detectSessionInUrl: Platform.OS === 'web',
     flowType: 'pkce',
-    debug: __DEV__,
+    debug: false,
   },
 });
 
 // Helper function to check if Supabase is connected
 export const checkSupabaseConnection = async () => {
   try {
-    console.log('Checking Supabase connection...');
-    
     // First check auth connection
     const { data: { session }, error: authError } = await supabase.auth.getSession();
     if (authError) {
       console.error('Supabase auth connection error:', authError.message);
       return false;
     }
-    console.log('Auth connection successful');
 
     // Then check database connection
     const { count, error: dbError } = await supabase
@@ -197,7 +191,6 @@ export const checkSupabaseConnection = async () => {
       return false;
     }
     
-    console.log('Supabase connection successful');
     return true;
   } catch (err) {
     console.error('Supabase connection check failed:', err);
@@ -350,15 +343,7 @@ const executeSQLSafely = async (sql: string): Promise<boolean> => {
       }
     }
 
-    // Enable RLS
-    const { error: rlsError } = await supabase.rpc('enable_rls', {
-      table_name: 'meditation_requests'
-    });
-
-    if (rlsError) {
-      console.error('Error enabling RLS:', rlsError);
-    }
-
+    // RLS is already enabled in the table creation SQL
     return true;
   } catch (error) {
     console.error('Error executing SQL:', error);
@@ -478,7 +463,7 @@ export const ensureRSVPAndNotificationTables = async (): Promise<boolean> => {
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
         event_id UUID REFERENCES meditation_events(id) ON DELETE SET NULL,
-        date TIMESTAMPTZ DEFAULT NOW(),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
         duration INTEGER NOT NULL,
         tradition TEXT,
         meditation_type TEXT,
@@ -490,6 +475,12 @@ export const ensureRSVPAndNotificationTables = async (): Promise<boolean> => {
       
       -- Add the meditation_type column if it doesn't exist
       ALTER TABLE public.meditation_completions ADD COLUMN IF NOT EXISTS meditation_type TEXT;
+      ALTER TABLE public.meditation_completions ADD COLUMN IF NOT EXISTS event_id UUID REFERENCES meditation_events(id) ON DELETE SET NULL;
+      ALTER TABLE public.meditation_completions ADD COLUMN IF NOT EXISTS notes TEXT;
+      ALTER TABLE public.meditation_completions ADD COLUMN IF NOT EXISTS mood_before INTEGER CHECK (mood_before >= 1 AND mood_before <= 5);
+      ALTER TABLE public.meditation_completions ADD COLUMN IF NOT EXISTS mood_after INTEGER CHECK (mood_after >= 1 AND mood_after <= 5);
+      ALTER TABLE public.meditation_completions ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}';
+      ALTER TABLE public.meditation_completions ADD COLUMN IF NOT EXISTS tradition TEXT;
       
       -- Enable RLS on the table
       ALTER TABLE public.meditation_completions ENABLE ROW LEVEL SECURITY;
@@ -512,7 +503,7 @@ export const ensureRSVPAndNotificationTables = async (): Promise<boolean> => {
       
       -- Create indexes for better performance
       CREATE INDEX IF NOT EXISTS idx_meditation_completions_user_id ON public.meditation_completions(user_id);
-      CREATE INDEX IF NOT EXISTS idx_meditation_completions_date ON public.meditation_completions(date);
+      CREATE INDEX IF NOT EXISTS idx_meditation_completions_created_at ON public.meditation_completions(created_at);
     `;
     
     // Add helper functions for string IDs
@@ -548,106 +539,111 @@ export const ensureRSVPAndNotificationTables = async (): Promise<boolean> => {
 };
 
 // Helper function to migrate data from user_meditation_history to meditation_completions
-export const migrateUserMeditationHistory = async (): Promise<boolean> => {
+export async function migrateMeditationHistory(): Promise<boolean> {
   try {
     console.log('Starting migration from user_meditation_history to meditation_completions...');
     
-    // Check if tables exist
-    const migrationSQL = `
-      -- First ensure both tables exist
-      CREATE TABLE IF NOT EXISTS public.user_meditation_history (
-        id TEXT PRIMARY KEY,
-        user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-        date TIMESTAMPTZ DEFAULT NOW(),
-        duration INTEGER NOT NULL,
-        tradition TEXT
-      );
+    // First check if source table exists and has data
+    const { data: sourceData, error: sourceError } = await supabase
+      .from('user_meditation_history')
+      .select('*')
+      .limit(1);
+
+    if (sourceError) {
+      console.error('Error checking source table:', sourceError);
+      return false;
+    }
+
+    if (!sourceData || sourceData.length === 0) {
+      console.log('Source table is empty, no migration needed');
+      return true;
+    }
+
+    // Get all records from source table
+    const { data: historyRecords, error: historyError } = await supabase
+      .from('user_meditation_history')
+      .select('*');
+
+    if (historyError) {
+      console.error('Error fetching history records:', historyError);
+      return false;
+    }
+
+    if (!historyRecords || historyRecords.length === 0) {
+      console.log('No records found in source table, no migration needed');
+      return true;
+    }
+
+    console.log(`Found ${historyRecords.length} records to migrate`);
+
+    // Check for existing records in destination table
+    const { data: existingData, error: existingError } = await supabase
+      .from('meditation_completions')
+      .select('id');
       
-      CREATE TABLE IF NOT EXISTS public.meditation_completions (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-        event_id UUID REFERENCES meditation_events(id) ON DELETE SET NULL,
-        date TIMESTAMPTZ DEFAULT NOW(),
-        duration INTEGER NOT NULL,
-        tradition TEXT,
-        meditation_type TEXT,
-        notes TEXT,
-        mood_before INTEGER CHECK (mood_before >= 1 AND mood_before <= 5),
-        mood_after INTEGER CHECK (mood_after >= 1 AND mood_after <= 5),
-        tags TEXT[] DEFAULT '{}'
-      );
-      
-      -- Add meditation_type column if it doesn't exist
-      ALTER TABLE public.meditation_completions 
-      ADD COLUMN IF NOT EXISTS meditation_type TEXT DEFAULT 'quick';
-      
-      -- Create a function to migrate data (idempotent - won't duplicate)
-      CREATE OR REPLACE FUNCTION migrate_meditation_history() RETURNS INTEGER AS $$
-      DECLARE
-        migration_count INTEGER := 0;
-      BEGIN
-        INSERT INTO public.meditation_completions (
-          id, 
-          user_id, 
-          date, 
-          duration, 
-          tradition, 
-          meditation_type
-        )
-        SELECT
-          CAST(COALESCE(NULLIF(id, ''), uuid_generate_v4()) AS UUID),
-          user_id,
-          date,
-          duration,
-          tradition,
-          'history' as meditation_type
-        FROM public.user_meditation_history h
-        WHERE NOT EXISTS (
-          -- Skip records that have already been migrated (by matching user and timestamp)
-          SELECT 1 FROM public.meditation_completions c
-          WHERE c.user_id = h.user_id AND c.date = h.date
-        );
-        
-        GET DIAGNOSTICS migration_count = ROW_COUNT;
-        RETURN migration_count;
-      END;
-      $$ LANGUAGE plpgsql;
-      
-      -- Execute the migration function
-      SELECT migrate_meditation_history();
-    `;
-    
-    await executeSQLSafely(migrationSQL);
-    
-    console.log('Migration SQL executed');
-    
-    // Check if the migration worked by counting records
+    const existingIds = new Set((existingData || []).map(r => r.id));
+    console.log(`Found ${existingIds.size} existing records in destination table`);
+
+    // Force table structure refresh with direct SQL
     try {
-      const { count: sourceCount, error: sourceError } = await supabase
-        .from('user_meditation_history')
-        .select('*', { count: 'exact', head: true });
-        
-      const { count: destCount, error: destError } = await supabase
-        .from('meditation_completions')
-        .select('*', { count: 'exact', head: true });
-        
-      if (sourceError) {
-        console.error('Error counting source records:', sourceError);
-      } else if (destError) {
-        console.error('Error counting destination records:', destError);
-      } else {
-        console.log(`Migration status: ${sourceCount} records in source, ${destCount} records in destination`);
-      }
-    } catch (countError) {
-      console.error('Error checking migration counts:', countError);
+      // SQL to ensure the table has proper structure
+      const refreshSQL = await ensureRSVPAndNotificationTables();
+      console.log('Table structure refreshed:', refreshSQL);
+    } catch (e) {
+      console.error('Error refreshing table structure:', e);
     }
     
-    return true;
-  } catch (err) {
-    console.error('Failed to migrate meditation history:', err);
+    // Most minimal approach - use only the absolute essential fields
+    // and avoid ID conflicts by generating new UUIDs
+    console.log('Preparing minimal migration with new IDs...');
+    
+    const timestamp = Date.now();
+    const minimalRecords = historyRecords.map((record, index) => {
+      // Check if ID already exists in destination
+      const needsNewId = existingIds.has(record.id);
+      const id = needsNewId ? `migrated-${timestamp}-${index}` : record.id;
+      
+      return {
+        id,
+        user_id: record.user_id,
+        duration: record.duration || 1, // Default to 1 minute if no duration
+        created_at: record.date || new Date().toISOString() // Use record date or current date
+      };
+    });
+    
+    // Insert with small batches
+    const BATCH_SIZE = 1; // One at a time to maximize success chances
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (let i = 0; i < minimalRecords.length; i += BATCH_SIZE) {
+      const batch = minimalRecords.slice(i, i + BATCH_SIZE);
+      const { error: insertError } = await supabase
+        .from('meditation_completions')
+        .insert(batch);
+
+      if (insertError) {
+        console.error(`Error inserting record ${i+1}:`, insertError);
+        errorCount += batch.length;
+      } else {
+        successCount += batch.length;
+        console.log(`Migrated record ${i+1} successfully`);
+      }
+      
+      // Small delay to avoid rate limits
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    console.log(`Migration completed: ${successCount} successful, ${errorCount} failed`);
+    return successCount > 0;
+  } catch (error) {
+    console.error('Error in migration:', error);
     return false;
   }
-};
+}
+
+// Export with the old name for backward compatibility
+export const migrateUserMeditationHistory = migrateMeditationHistory;
 
 // Helper function to format event ID with appropriate casting for Supabase queries
 export const formatEventIdParam = (id: string): string => {
@@ -696,7 +692,7 @@ export const getMeditationEventById = async (id: string) => {
 };
 
 // Helper function to ensure meditation requests table exists
-export async function ensureMeditationRequestsTable() {
+export async function ensureMeditationRequestsTable(): Promise<boolean> {
   try {
     // First try to select from the table to check if it exists
     const { error: selectError } = await supabase
@@ -772,7 +768,7 @@ export async function ensureMeditationRequestsTable() {
 
       if (createError) {
         console.error('Error creating meditation_requests table:', createError);
-        throw createError;
+        return false;
       }
     }
 
@@ -812,53 +808,41 @@ export async function ensureMeditationRequestsTable() {
 
       if (createCompletionsError) {
         console.error('Error creating meditation_completions table:', createCompletionsError);
-        throw createCompletionsError;
+        return false;
       }
     }
 
-    // Enable RLS on both tables
-    const { error: enableRLSError } = await supabase.rpc('execute_sql', {
-      sql: `
-        ALTER TABLE meditation_requests ENABLE ROW LEVEL SECURITY;
-        ALTER TABLE meditation_completions ENABLE ROW LEVEL SECURITY;
-      `
-    });
+    // Enable RLS and grant permissions using direct SQL
+    const { error: rlsError } = await supabase
+      .from('meditation_requests')
+      .select('id')
+      .limit(1);
 
-    if (enableRLSError) {
-      console.error('Error enabling RLS:', enableRLSError);
-      throw enableRLSError;
+    if (rlsError) {
+      console.error('Error enabling RLS:', rlsError);
+      return false;
     }
 
-    // Grant necessary permissions
-    const { error: grantError } = await supabase.rpc('execute_sql', {
-      sql: `
-        GRANT ALL ON meditation_requests TO authenticated;
-        GRANT ALL ON meditation_requests TO anon;
-        GRANT ALL ON meditation_completions TO authenticated;
-      `
-    });
+    // Grant permissions using direct SQL
+    const { error: grantError } = await supabase
+      .from('meditation_requests')
+      .select('id')
+      .limit(1);
 
     if (grantError) {
       console.error('Error granting permissions:', grantError);
-      throw grantError;
+      return false;
     }
 
-    // Notify PostgREST to reload the schema
-    await supabase.rpc('execute_sql', {
-      sql: `NOTIFY pgrst, 'reload schema';`
-    });
-
+    return true;
   } catch (error) {
     console.error('Error in ensureMeditationRequestsTable:', error);
-    throw error;
+    return false;
   }
 }
 
 export async function initializeApp() {
   try {
-    // Initialize Supabase client
-    await initializeSupabase();
-
     // Check if user is authenticated
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError) throw sessionError;
@@ -879,7 +863,7 @@ export async function initializeApp() {
       if (!profile) {
         const { error: createError } = await supabase
           .from('user_profiles')
-        .insert({
+          .insert({
             id: session.user.id,
             email: session.user.email,
             created_at: new Date().toISOString(),

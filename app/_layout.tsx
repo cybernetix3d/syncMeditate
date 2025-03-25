@@ -12,7 +12,7 @@ import { PrivacyProvider } from '@/src/context/PrivacyProvider';
 import { MeditationProvider } from '@/src/context/MeditationProvider';
 import { COLORS } from '@/src/constants/Styles';
 import { createSolarEvents } from '@/app/events/create';
-import { supabase, ensureRSVPAndNotificationTables, migrateUserMeditationHistory } from '@/src/api/supabase';
+import { supabase, ensureRSVPAndNotificationTables, migrateMeditationHistory } from '@/src/api/supabase';
 import * as Notifications from 'expo-notifications';
 import { registerForPushNotificationsAsync, setupNotificationListeners } from '@/src/services/NotificationService';
 
@@ -174,10 +174,9 @@ function RootLayoutNav() {
           
           // Run the migration from user_meditation_history to meditation_completions
           try {
-            await migrateUserMeditationHistory();
-          } catch (migrationErr) {
-            console.error('Meditation history migration error:', migrationErr);
-            // Continue despite migration error - this will be attempted again later
+            await migrateMeditationHistory();
+          } catch (e) {
+            console.error('Meditation history migration error:', e);
           }
         } catch (dbErr) {
           console.log('Database tables initialization error:', dbErr);
