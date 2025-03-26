@@ -133,7 +133,7 @@ const EventCard: React.FC<EventCardProps> = ({
     >
       <View style={styles.cardHeader}>
         <View style={[styles.traditionIcon, { backgroundColor: traditionObj.color }]}>
-          <Ionicons name={traditionObj.icon as any} size={20} color={COLORS.white} />
+          <Ionicons name={traditionObj.ionicon as any} size={20} color={COLORS.white} />
         </View>
         <View style={styles.dateTimeContainer}>
           <Text style={styles.dateText}>{formatDate(eventDate)}</Text>
@@ -299,7 +299,10 @@ export default function EventsScreen() {
   };
   
   // Function to handle setting attendance status
-  const handleSetAttendance = async (event: MeditationEvent, status: 'attending' | 'interested' | null) => {
+  const handleSetAttendance = async (
+    event: MeditationEvent,
+    status: 'attending' | 'interested' | null
+  ) => {
     if (!user) {
       Alert.alert(
         'Sign In Required',
@@ -318,11 +321,10 @@ export default function EventsScreen() {
     }
     
     try {
-      // Extract the original event ID (removing the date-specific suffix)
+      // Extract the original event ID (removing any date-specific suffix)
       let originalId = event.id;
       if (event.id.includes('-')) {
         const segments = event.id.split('-');
-        // If this looks like a UUID with date suffix, take just the first part
         if (segments.length > 5) {
           originalId = segments[0];
         }
@@ -330,7 +332,7 @@ export default function EventsScreen() {
       
       console.log(`Setting attendance status for event: ${originalId} to ${status || 'null'}`);
       
-      // Check if there's already an RSVP record
+      // Check if an RSVP record already exists for this event and user
       const { data: existingRSVP, error: fetchError } = await supabase
         .from('event_rsvps')
         .select('id, notification_id')
@@ -344,29 +346,49 @@ export default function EventsScreen() {
         return;
       }
       
+      let notificationId = existingRSVP?.notification_id || null;
+      
+      // When setting status to 'attending', schedule a reminder 5 minutes before event start
+      if (status === 'attending') {
+        try {
+          notificationId = await scheduleEventReminder(originalId, event.title, event.start_time);
+          console.log(`Scheduled attending notification with ID: ${notificationId}`);
+        } catch (notifError) {
+          console.error('Error scheduling attending notification:', notifError);
+        }
+      } 
+      // If removing attendance and a notification exists, cancel it
+      else if (existingRSVP && existingRSVP.notification_id) {
+        try {
+          await cancelNotification(existingRSVP.notification_id);
+          console.log(`Cancelled notification ${existingRSVP.notification_id}`);
+          notificationId = null;
+        } catch (cancelError) {
+          console.error('Error canceling notification:', cancelError);
+        }
+      }
+      
+      // Update or create the RSVP record with the new attendance status and notification ID
       if (existingRSVP) {
-        // Update existing record
         const { error: updateError } = await supabase
           .from('event_rsvps')
-          .update({ attendance_status: status })
+          .update({ attendance_status: status, notification_id: notificationId })
           .eq('id', existingRSVP.id);
-          
         if (updateError) {
           console.error('Error updating attendance status:', updateError);
           Alert.alert('Error', 'Failed to update attendance status. Please try again.');
           return;
         }
       } else {
-        // Create new record
         const { error: insertError } = await supabase
           .from('event_rsvps')
           .insert({
             user_id: user.id,
             event_id: originalId,
             attendance_status: status,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            notification_id: notificationId
           });
-          
         if (insertError) {
           console.error('Error setting attendance status:', insertError);
           Alert.alert('Error', 'Failed to set attendance status. Please try again.');
@@ -374,34 +396,31 @@ export default function EventsScreen() {
         }
       }
       
-      // Update local state
+      // Update local state accordingly
       if (status) {
-        setAttendanceStatuses(prev => ({
-          ...prev,
-          [originalId]: status
-        }));
+        setAttendanceStatuses((prev: any) => ({ ...prev, [originalId]: status }));
       } else {
-        setAttendanceStatuses(prev => {
+        setAttendanceStatuses((prev: any) => {
           const newStatuses = { ...prev };
           delete newStatuses[originalId];
           return newStatuses;
         });
       }
       
-      // Show confirmation
-      const message = status === 'attending' 
-        ? 'You are now attending this event' 
-        : status === 'interested' 
-          ? 'You are now interested in this event' 
-          : 'Attendance status removed';
-          
-      Alert.alert('Status Updated', message);
+      const message =
+        status === 'attending'
+          ? 'You are now attending this event. A reminder will be sent 5 minutes before the event starts.'
+          : status === 'interested'
+          ? 'You are now interested in this event.'
+          : 'Attendance status removed.';
       
+      Alert.alert('Status Updated', message);
     } catch (error) {
       console.error('Error in handleSetAttendance:', error);
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     }
   };
+  
   
   const fetchEvents = async () => {
     try {
@@ -491,8 +510,7 @@ export default function EventsScreen() {
         const originalHour = originalStartDate.getHours();
         const originalMinute = originalStartDate.getMinutes();
         
-        // Only generate occurrences for the next 7 days for better performance
-        // (we can load more on demand as the user scrolls)
+        // Only generate occurrences for the next 7 days for performance
         const limitedDates = dates.slice(0, 7);
         
         limitedDates.forEach(date => {
@@ -500,22 +518,20 @@ export default function EventsScreen() {
           
           if (baseEvent.recurrence_type === 'daily') {
             shouldShowOnThisDate = true;
-          } 
-          else if (baseEvent.recurrence_type === 'weekly') {
+          } else if (baseEvent.recurrence_type === 'weekly') {
             shouldShowOnThisDate = (date.getDay() === originalDayOfWeek);
-          } 
-          else if (baseEvent.recurrence_type === 'monthly') {
+          } else if (baseEvent.recurrence_type === 'monthly') {
             shouldShowOnThisDate = (date.getDate() === originalDayOfMonth);
           }
           
           if (!shouldShowOnThisDate) return;
           
-          // Create a new instance of the event for this date
+          // Create a new occurrence for this date:
           const newStartTime = new Date(date);
           newStartTime.setHours(originalHour, originalMinute, 0, 0);
           
-          // Skip if this event time is in the past for today
-          if (newStartTime < now && date.getDate() === now.getDate()) return;
+          // *** New: Skip this occurrence if it's already in the past ***
+          if (newStartTime <= new Date()) return;
           
           // Create a cloned event with the new start time
           const instanceId = `${baseEvent.id}-${newStartTime.toISOString()}`;
@@ -529,6 +545,7 @@ export default function EventsScreen() {
           recurringEvents.push(clonedEvent);
         });
       });
+
       
       // Combine all events
       const allProcessedEvents = [...nonRecurringEventsWithCounts, ...recurringEvents];
@@ -892,9 +909,7 @@ export default function EventsScreen() {
     }
     
     try {
-      router.push({
-        pathname: 'events/create'
-      });
+      router.push('/events/create');
     } catch (error) {
       console.error('Navigation error:', error);
       Alert.alert('Navigation Error', 'Could not navigate to create event page');

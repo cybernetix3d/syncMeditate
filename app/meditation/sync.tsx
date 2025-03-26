@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -25,6 +26,7 @@ import { COLORS } from '@/src/constants/Styles';
 import { useTheme } from '@/src/context/ThemeContext';
 import RequestForm from '../../src/components/meditation/RequestForm';
 import RequestList from '../../src/components/meditation/RequestList';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const isUserProfile = (user: boolean | UserProfile | null): user is UserProfile => {
   return typeof user !== 'boolean' && user !== null && 'id' in user;
@@ -63,13 +65,25 @@ export default function SyncMeditationScreen() {
 
   const [showRequestForm, setShowRequestForm] = useState(false);
 
-  // Fix database schema on mount
+  // Fix database schema only once per app session
   useEffect(() => {
     const initializeDatabase = async () => {
       try {
+        // Check if we've already run the migration in this session
+        const migrationRun = await AsyncStorage.getItem('DB_MIGRATION_RUN');
+        if (migrationRun === 'true') {
+          console.log('Database migration already run this session, skipping...');
+          return;
+        }
+        
+        console.log('Running database migration...');
         const result = await fixDatabaseSchema();
         if (!result.success) {
           console.error('Failed to fix database schema:', result.error);
+        } else {
+          // Mark migration as run for this session
+          await AsyncStorage.setItem('DB_MIGRATION_RUN', 'true');
+          console.log('Database migration completed successfully');
         }
       } catch (error) {
         console.error('Error initializing database:', error);

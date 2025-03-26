@@ -14,7 +14,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export type NotificationType = 
+export type NotificationType =
   | 'event_reminder'
   | 'daily_meditation'
   | 'community_activity'
@@ -128,7 +128,11 @@ export async function scheduleNotification({
 }
 
 // Schedule an event reminder based on user preferences
-export async function scheduleEventReminder(eventId: string, eventTitle: string, startTime: string) {
+export async function scheduleEventReminder(
+  eventId: string,
+  eventTitle: string,
+  startTime: string
+): Promise<string | null> {
   try {
     console.log(`Scheduling reminder for event: ${eventId}, "${eventTitle}", time: ${startTime}`);
     
@@ -140,54 +144,56 @@ export async function scheduleEventReminder(eventId: string, eventTitle: string,
       return null;
     }
     
-    // Get user's notification preferences
+    // 1) Fetch the user’s notification settings from the database
     const { data: settings } = await supabase
       .from('user_notification_settings')
       .select('*')
       .eq('user_id', userId)
       .maybeSingle();
-      
-    // Default to 15 minutes if no settings found or if reminders are disabled
-    const reminderMinutes = (settings && settings.event_reminders) ? settings.reminder_time : 15;
+    
+    // 2) Use the stored reminder_time if event_reminders is enabled; default to 15 otherwise
+    const reminderMinutes = (settings && settings.event_reminders)
+      ? settings.reminder_time
+      : 15;
     
     if (!settings || !settings.event_reminders) {
       console.log('Event reminders disabled or no settings found - using default 15 minutes');
     }
     
-    // Calculate trigger time based on user preference
+    // 3) Calculate the notification trigger time.
+    //    We assume startTime is in UTC.
     const eventDate = new Date(startTime);
-    const reminderDate = new Date(eventDate.getTime() - (reminderMinutes * 60 * 1000));
+    const reminderDate = new Date(eventDate.getTime() - reminderMinutes * 60000);
     
-    // Don't schedule if the reminder time is in the past
-    if (reminderDate <= new Date()) {
-      console.log('Reminder time is in the past, not scheduling');
+    // Calculate actual delay in minutes from now to reminderDate
+    const now = new Date();
+    const delayMs = reminderDate.getTime() - now.getTime();
+    const delayMinutes = Math.round(delayMs / 60000);
+    
+    // Ensure the reminder is scheduled only if the trigger is in the future
+    if (delayMs <= 0) {
+      console.log(`Reminder time is in the past (delay: ${delayMinutes} minutes), not scheduling`);
       return null;
     }
     
+    console.log(`User setting: ${reminderMinutes} minutes. Actual delay from now: ${delayMinutes} minutes.`);
     console.log(`Scheduling reminder for "${eventTitle}" at ${reminderDate.toISOString()}`);
     
-    // Ensure we have a valid event ID string to avoid insertion errors
-    const validEventId = eventId ? String(eventId).trim() : 'unknown';
-    
-    // Schedule the notification with a proper date trigger
-    const notificationId = await scheduleNotification({
-      type: 'event_reminder',
-      title: 'Meditation Reminder',
-      body: `Your meditation event "${eventTitle}" starts in ${reminderMinutes} minutes.`,
-      data: { eventId: validEventId, type: 'event_reminder' },
+    // 4) Schedule the notification using the computed trigger time and updated message
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Meditation Reminder',
+        body: `Your meditation event "${eventTitle}" starts in approximately ${delayMinutes} minutes.`,
+        data: { eventId, type: 'event_reminder' },
+      },
       trigger: {
         channelId: 'default',
-        date: reminderDate
-      }
+        date: reminderDate,
+      },
     });
     
-    if (notificationId) {
-      console.log(`Successfully scheduled notification ${notificationId} for ${eventDate.toISOString()}`);
-      return notificationId;
-    } else {
-      console.log('Failed to schedule notification - notificationId is null');
-      return null;
-    }
+    console.log(`Successfully scheduled notification ${notificationId} for ${reminderDate.toISOString()}`);
+    return notificationId;
   } catch (error) {
     console.error('Error scheduling event reminder:', error);
     return null;
@@ -220,4 +226,4 @@ export async function updateRSVPSchemaForNotifications() {
     console.error('Error updating RSVP schema:', error);
     return false;
   }
-} 
+}

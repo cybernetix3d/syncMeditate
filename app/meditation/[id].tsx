@@ -12,7 +12,7 @@ import { useAuth } from '@/src/context/AuthProvider';
 import { scheduleEventReminder } from '@/src/services/NotificationService';
 import { useFocusEffect } from '@react-navigation/native';
 
-// Create simple component for BackButton if it doesn't exist
+// Back button component
 const BackButton = () => {
   const router = useRouter();
   return (
@@ -22,21 +22,18 @@ const BackButton = () => {
   );
 };
 
-// Create simple component for HostInfo if it doesn't exist
+// HostInfo component
 const HostInfo = ({ userId, isDark }) => {
   const [hostInfo, setHostInfo] = useState(null);
-  
   useEffect(() => {
     const fetchHostInfo = async () => {
       if (!userId) return;
-      
       try {
         const { data, error } = await supabase
           .from('profiles')
           .select('display_name, avatar_url')
           .eq('id', userId)
           .single();
-          
         if (!error && data) {
           setHostInfo(data);
         }
@@ -44,12 +41,9 @@ const HostInfo = ({ userId, isDark }) => {
         console.error('Error fetching host info:', err);
       }
     };
-    
     fetchHostInfo();
   }, [userId]);
-  
   if (!hostInfo) return null;
-  
   return (
     <View style={styles.infoRow}>
       <Ionicons name="person-outline" size={20} color={isDark ? DARK_COLORS.gray : LIGHT_COLORS.gray} />
@@ -58,6 +52,44 @@ const HostInfo = ({ userId, isDark }) => {
       </Text>
     </View>
   );
+};
+
+// Helper: Extract the base UUID from a composite event ID.
+// A standard UUID has 5 segments (separated by dashes). If there are more than 5 segments,
+// we assume the first 5 form the original UUID.
+const extractOriginalId = (compositeId: string): string => {
+  const segments = compositeId.split('-');
+  return segments.length > 5 ? segments.slice(0, 5).join('-') : compositeId;
+};
+
+// Helper: Extract occurrence time from composite ID if available.
+const extractOccurrenceTime = (compositeId: string): string | null => {
+  const segments = compositeId.split('-');
+  return segments.length > 5 ? segments.slice(5).join('-') : null;
+};
+
+// Helper: Given an occurrence time, recurrence type, and current time, compute next occurrence if needed.
+const getNextOccurrence = (occurrenceTimeStr: string, recurrenceType: string): string => {
+  let occurrence = new Date(occurrenceTimeStr);
+  const now = new Date();
+  if (occurrence > now) {
+    return occurrence.toISOString();
+  }
+  // Compute next occurrence based on recurrence type
+  if (recurrenceType === 'daily') {
+    while (occurrence <= now) {
+      occurrence.setDate(occurrence.getDate() + 1);
+    }
+  } else if (recurrenceType === 'weekly') {
+    while (occurrence <= now) {
+      occurrence.setDate(occurrence.getDate() + 7);
+    }
+  } else if (recurrenceType === 'monthly') {
+    while (occurrence <= now) {
+      occurrence.setMonth(occurrence.getMonth() + 1);
+    }
+  }
+  return occurrence.toISOString();
 };
 
 export default function MeditationDetailScreen() {
@@ -77,23 +109,35 @@ export default function MeditationDetailScreen() {
   
   const fetchEventDetails = useCallback(async () => {
     if (!id) return;
-    
     try {
       setLoading(true);
       setError(null);
       
-      // Use the safe version that handles non-UUID IDs
-      const { data: eventData, error: eventError } = await getMeditationEventById(id);
+      // Extract the base UUID from the composite id
+      const originalId = extractOriginalId(id);
+      // Also extract the occurrence part, if any.
+      let occurrencePart = extractOccurrenceTime(id);
       
+      // Fetch event template using originalId
+      const { data: eventData, error: eventError } = await getMeditationEventById(originalId);
       if (eventError) {
         console.error('Error fetching event details:', eventError);
         setError('Failed to load meditation details. Please try again later.');
         return;
       }
-      
       if (!eventData) {
         setError('Meditation event not found.');
         return;
+      }
+      
+      // If an occurrence time was provided, adjust the event start_time.
+      if (occurrencePart) {
+        // If the occurrence is in the past, compute the next upcoming occurrence.
+        let occurrenceDate = new Date(occurrencePart);
+        if (occurrenceDate <= new Date() && eventData.recurrence_type) {
+          occurrencePart = getNextOccurrence(occurrencePart, eventData.recurrence_type);
+        }
+        eventData.start_time = occurrencePart;
       }
       
       setEvent(eventData);
@@ -103,7 +147,6 @@ export default function MeditationDetailScreen() {
         try {
           const { data: participantsData, error: participantsError } = await supabase
             .rpc('get_participant_count', { event_id: eventData.id });
-          
           if (!participantsError && participantsData !== null) {
             setParticipantCount(participantsData);
           }
@@ -121,7 +164,6 @@ export default function MeditationDetailScreen() {
             .eq('event_id', eventData.id)
             .eq('user_id', user.id)
             .maybeSingle();
-          
           setIsRSVPed(!!rsvpData);
         } catch (err) {
           console.error('Error checking RSVP:', err);
@@ -147,11 +189,10 @@ export default function MeditationDetailScreen() {
   
   const handleJoin = async () => {
     if (!event) return;
-    
     setJoinLoading(true);
     try {
-      // Navigate to sync meditation screen with event details
-      router.push(`/meditation/sync?id=${event.id}&duration=${event.duration}`);
+      const originalId = extractOriginalId(event.id);
+      router.push(`/meditation/sync?id=${originalId}&duration=${event.duration}`);
     } catch (error) {
       console.error('Error navigating to sync screen:', error);
       Alert.alert('Error', 'Failed to join meditation. Please try again.');
@@ -176,46 +217,43 @@ export default function MeditationDetailScreen() {
     
     setRSVPLoading(true);
     try {
+      const originalId = extractOriginalId(event.id);
+      
       if (isRSVPed) {
         // Remove RSVP
         const { error } = await supabase
           .from('event_rsvps')
           .delete()
-          .eq('event_id', event.id)
+          .eq('event_id', originalId)
           .eq('user_id', user.id);
-        
         if (error) {
           console.error('Error removing RSVP:', error);
           Alert.alert('Error', 'Failed to remove reminder. Please try again.');
           return;
         }
-        
         setIsRSVPed(false);
         Alert.alert('Reminder Removed', 'You will no longer receive a notification for this event.');
       } else {
-        // Add RSVP and schedule notification
+        // Add RSVP and schedule notification using user settings
         try {
           const notificationId = await scheduleEventReminder(
-            event.id,
+            originalId,
             event.title,
             event.start_time
           );
-          
           const { error } = await supabase
             .from('event_rsvps')
             .insert({
-              event_id: event.id,
+              event_id: originalId,
               user_id: user.id,
               notification_id: notificationId,
               created_at: new Date().toISOString()
             });
-          
           if (error) {
             console.error('Error adding RSVP:', error);
             Alert.alert('Error', 'Failed to set reminder. Please try again.');
             return;
           }
-          
           setIsRSVPed(true);
           Alert.alert(
             'Reminder Set',
@@ -252,39 +290,28 @@ export default function MeditationDetailScreen() {
   
   const getRecurrenceText = (event: any) => {
     if (!event.is_recurring) return 'One-time event';
-    
-    const recurrenceMap = {
-      daily: 'Daily',
-      weekly: 'Weekly',
-      monthly: 'Monthly'
-    };
-    
+    const recurrenceMap = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' };
     return `${recurrenceMap[event.recurrence_type] || 'Recurring'} event`;
   };
   
   const isHappeningNow = (event: any): boolean => {
     if (!event) return false;
-    
     const now = new Date();
     const startTime = new Date(event.start_time);
     const endTime = new Date(startTime.getTime() + event.duration * 60000);
-    
     return now >= startTime && now <= endTime;
   };
   
-  const getEventTiming = (event: any): {text: string, isLive: boolean} => {
+  const getEventTiming = (event: any): { text: string; isLive: boolean } => {
     if (!event) return { text: '', isLive: false };
-    
     const now = new Date();
     const startTime = new Date(event.start_time);
     const endTime = new Date(startTime.getTime() + event.duration * 60000);
-    
     if (now < startTime) {
       const diffMs = startTime.getTime() - now.getTime();
       const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
       const diffHrs = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
       const diffMins = Math.round((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-      
       if (diffDays > 0) {
         return { text: `Starts in ${diffDays}d ${diffHrs}h`, isLive: false };
       } else if (diffHrs > 0) {
@@ -332,11 +359,7 @@ export default function MeditationDetailScreen() {
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle-outline" size={60} color="red" />
           <Text style={[styles.errorText, isDark && styles.darkText]}>{error}</Text>
-          <Button 
-            variant="primary" 
-            onPress={handleRefresh}
-            style={styles.refreshButton}
-          >
+          <Button variant="primary" onPress={handleRefresh} style={styles.refreshButton}>
             Try Again
           </Button>
         </View>
@@ -361,7 +384,7 @@ export default function MeditationDetailScreen() {
       <ScrollView style={styles.scrollContainer}>
         <View style={styles.header}>
           <View style={[styles.traditionBadge, { backgroundColor: tradition.color }]}>
-            <Ionicons name={tradition.icon as any} size={24} color="#fff" />
+            <Ionicons name={(tradition as any).ionicon} size={24} color="#fff" />
           </View>
           <Text style={[styles.title, isDark && styles.darkText]}>{event.title}</Text>
           <View style={styles.timingRow}>
@@ -421,25 +444,18 @@ export default function MeditationDetailScreen() {
         
         <View style={styles.actionSection}>
           {isHappeningNow(event) ? (
-            <Button 
-              variant="primary" 
-              onPress={handleJoin}
-              loading={joinLoading}
-              style={styles.actionButton}
-            >
+            <Button variant="primary" onPress={handleJoin} loading={joinLoading} style={styles.actionButton}>
               Join Meditation Now
             </Button>
           ) : (
-            <>
-              <Button 
-                variant={isRSVPed ? "secondary" : "primary"} 
-                onPress={handleToggleRSVP}
-                loading={rsvpLoading}
-                style={styles.actionButton}
-              >
-                {isRSVPed ? 'Cancel Reminder' : 'Set Reminder'}
-              </Button>
-            </>
+            <Button
+              variant={isRSVPed ? "secondary" : "primary"}
+              onPress={handleToggleRSVP}
+              loading={rsvpLoading}
+              style={styles.actionButton}
+            >
+              {isRSVPed ? 'Cancel Reminder' : 'Set Reminder'}
+            </Button>
           )}
         </View>
       </ScrollView>
@@ -501,7 +517,7 @@ const styles = StyleSheet.create({
   liveContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F95738', // Live indicator color
+    backgroundColor: '#F95738',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 12,
