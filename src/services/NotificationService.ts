@@ -55,7 +55,6 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       return null;
     }
     
-    // Make sure the project ID is valid
     if (!Constants.expoConfig?.extra?.eas?.projectId) {
       console.log('No Expo project ID found in configuration');
       return null;
@@ -66,7 +65,6 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
         projectId: Constants.expoConfig.extra.eas.projectId,
       });
       
-      // Validate token format
       if (!token || !token.data || typeof token.data !== 'string' || token.data.length < 10) {
         console.log('Received invalid token format:', token);
         return null;
@@ -91,7 +89,6 @@ export function setupNotificationListeners(onNotificationReceived: (notification
     const { data } = response.notification.request.content;
     
     if (data.type === 'event_reminder' && data.eventId) {
-      // Navigate to the event details page
       router.push(`/meditation/${data.eventId}`);
     }
   });
@@ -144,14 +141,12 @@ export async function scheduleEventReminder(
       return null;
     }
     
-    // 1) Fetch the user’s notification settings from the database
     const { data: settings } = await supabase
       .from('user_notification_settings')
       .select('*')
       .eq('user_id', userId)
       .maybeSingle();
     
-    // 2) Use the stored reminder_time if event_reminders is enabled; default to 15 otherwise
     const reminderMinutes = (settings && settings.event_reminders)
       ? settings.reminder_time
       : 15;
@@ -160,26 +155,29 @@ export async function scheduleEventReminder(
       console.log('Event reminders disabled or no settings found - using default 15 minutes');
     }
     
-    // 3) Calculate the notification trigger time.
-    //    We assume startTime is in UTC.
     const eventDate = new Date(startTime);
     const reminderDate = new Date(eventDate.getTime() - reminderMinutes * 60000);
     
-    // Calculate actual delay in minutes from now to reminderDate
     const now = new Date();
     const delayMs = reminderDate.getTime() - now.getTime();
     const delayMinutes = Math.round(delayMs / 60000);
     
-    // Ensure the reminder is scheduled only if the trigger is in the future
+    console.log("startTime (raw):", startTime);
+    console.log("Parsed eventDate (local):", eventDate.toString());
+    console.log("Parsed eventDate (UTC):", eventDate.toISOString());
+    console.log("Calculated reminderDate (local):", reminderDate.toString());
+    console.log("Calculated reminderDate (UTC):", reminderDate.toISOString());
+    console.log("NOW (local):", now.toString());
+    console.log("NOW (UTC):", now.toISOString());
+    console.log(`User setting: ${reminderMinutes} minutes. Actual delay from now: ${delayMinutes} minutes.`);
+    
     if (delayMs <= 0) {
       console.log(`Reminder time is in the past (delay: ${delayMinutes} minutes), not scheduling`);
       return null;
     }
     
-    console.log(`User setting: ${reminderMinutes} minutes. Actual delay from now: ${delayMinutes} minutes.`);
     console.log(`Scheduling reminder for "${eventTitle}" at ${reminderDate.toISOString()}`);
     
-    // 4) Schedule the notification using the computed trigger time and updated message
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Meditation Reminder',
