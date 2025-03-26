@@ -7,7 +7,7 @@ export const LIGHT_COLORS = {
   accent: '#EE964B',       // Sunny Amber (energetic highlight)
   pastel1: '#F4D35E',      // Soft Yellow (warm and inviting)
   pastel2: '#A1C181',      // Light Green (refreshing, calming)
-  pastel3: '#619B8A',      // Sage Green (balanced, sophisticated)
+  pastel3: '#AB47BC',      // Sage Green (balanced, sophisticated)
   background: '#FAFAFA',   // Off-white (clean and minimal)
   surface: '#FFFFFF',      // Pure White
   white: '#FFFFFF',
@@ -17,7 +17,9 @@ export const LIGHT_COLORS = {
   darkGray: '#333F48',     // Dark Charcoal (strong contrast)
   headerText: '#0D3B66',   // Matching Primary (cohesive branding)
   bodyText: '#2B2D42',     // Dark Navy (excellent readability)
-  subtitleText: '#8D99AE'  // Cool Gray (subtle differentiation)
+  subtitleText: '#8D99AE',  // Cool Gray (subtle differentiation)
+  border: '#AB47BC'        // Same as lightGray for light theme
+
 };
 
 export const DARK_COLORS = {
@@ -36,7 +38,8 @@ export const DARK_COLORS = {
   darkGray: '#E0E0E0',     // Light Gray (strong contrast)
   headerText: '#BBDEFB',   // Soft Blue (easily readable)
   bodyText: '#E3F2FD',     // Very Light Blue (high contrast text)
-  subtitleText: '#90A4AE'  // Muted Blue-Gray (professional subtlety)
+  subtitleText: '#90A4AE',  // Muted Blue-Gray (professional subtlety)
+  border: '#2C2C2C'
 };
 
 

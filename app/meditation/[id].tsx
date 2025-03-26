@@ -1,5 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Modal // Import Modal
+} from 'react-native';
 import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,94 +23,81 @@ import Button from '@/src/components/common/Button';
 import { useAuth } from '@/src/context/AuthProvider';
 import { scheduleEventReminder } from '@/src/services/NotificationService';
 import { useFocusEffect } from '@react-navigation/native';
+import RequestForm from '@/src/components/meditation/RequestForm';
+import RequestList from '@/src/components/meditation/RequestList';
 
-// Back button component
+// --- BackButton and HostInfo components remain the same ---
 const BackButton = () => {
   const router = useRouter();
+  const { colors } = useTheme(); // Use theme color for icon
   return (
     <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-      <Ionicons name="arrow-back" size={24} color={COLORS.primary} />
+      <Ionicons name="arrow-back" size={24} color={colors.primary} />
     </TouchableOpacity>
   );
 };
 
-// HostInfo component
 const HostInfo = ({ userId, isDark }) => {
   const [hostInfo, setHostInfo] = useState(null);
+  const { colors } = useTheme(); // Use theme colors
+
   useEffect(() => {
     const fetchHostInfo = async () => {
       if (!userId) return;
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('display_name, avatar_url')
+          .select('display_name, avatar_url') // Added avatar_url
           .eq('id', userId)
           .single();
         if (!error && data) {
           setHostInfo(data);
+        } else if (error) {
+          console.error('Error fetching host info:', error.message);
         }
       } catch (err) {
-        console.error('Error fetching host info:', err);
+        console.error('Catch Error fetching host info:', err);
       }
     };
     fetchHostInfo();
   }, [userId]);
-  if (!hostInfo) return null;
+
+  if (!hostInfo) return null; // Don't render anything if hostInfo is null
+
   return (
     <View style={styles.infoRow}>
-      <Ionicons name="person-outline" size={20} color={isDark ? DARK_COLORS.gray : LIGHT_COLORS.gray} />
-      <Text style={[styles.infoText, isDark && styles.darkText]}>
+      {hostInfo.avatar_url ? (
+        <Image source={{ uri: hostInfo.avatar_url }} style={styles.hostAvatar} />
+      ) : (
+        <Ionicons name="person-circle-outline" size={22} color={colors.gray} style={{marginRight: 10}} />
+      )}
+      <Text style={[styles.infoText, { color: colors.bodyText }]}>
         Hosted by {hostInfo.display_name || 'Anonymous'}
       </Text>
     </View>
   );
 };
+// ---
 
 // Helper: Extract the base UUID from a composite event ID.
-// A standard UUID has 5 segments (separated by dashes). If there are more than 5 segments,
-// we assume the first 5 form the original UUID.
 const extractOriginalId = (compositeId: string): string => {
+  if (!compositeId || typeof compositeId !== 'string') return ''; // Handle invalid input
   const segments = compositeId.split('-');
-  return segments.length > 5 ? segments.slice(0, 5).join('-') : compositeId;
+  // Basic UUID check (5 segments: 8-4-4-4-12 hex chars) - adjust if needed
+  if (segments.length >= 5 && segments[0].length === 8) {
+     return segments.slice(0, 5).join('-');
+  }
+  return compositeId; // Return original if it doesn't look like a composite ID we expect
 };
 
-// Helper: Extract occurrence time from composite ID if available.
-const extractOccurrenceTime = (compositeId: string): string | null => {
-  const segments = compositeId.split('-');
-  return segments.length > 5 ? segments.slice(5).join('-') : null;
-};
-
-// Helper: Given an occurrence time, recurrence type, and current time, compute next occurrence if needed.
-const getNextOccurrence = (occurrenceTimeStr: string, recurrenceType: string): string => {
-  let occurrence = new Date(occurrenceTimeStr);
-  const now = new Date();
-  if (occurrence > now) {
-    return occurrence.toISOString();
-  }
-  // Compute next occurrence based on recurrence type
-  if (recurrenceType === 'daily') {
-    while (occurrence <= now) {
-      occurrence.setDate(occurrence.getDate() + 1);
-    }
-  } else if (recurrenceType === 'weekly') {
-    while (occurrence <= now) {
-      occurrence.setDate(occurrence.getDate() + 7);
-    }
-  } else if (recurrenceType === 'monthly') {
-    while (occurrence <= now) {
-      occurrence.setMonth(occurrence.getMonth() + 1);
-    }
-  }
-  return occurrence.toISOString();
-};
 
 export default function MeditationDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const navigation = useNavigation();
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { user } = useAuth();
-  
+
   const [event, setEvent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -106,102 +105,128 @@ export default function MeditationDetailScreen() {
   const [isRSVPed, setIsRSVPed] = useState(false);
   const [rsvpLoading, setRSVPLoading] = useState(false);
   const [joinLoading, setJoinLoading] = useState(false);
-  
+
+  // Meditation state: PREPARING, IN_PROGRESS, PAUSED, COMPLETED
+  // Note: This state seems unused in the provided logic, but kept for potential future use.
+  const [meditationState, setMeditationState] = useState<'PREPARING' | 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED'>('PREPARING');
+
+  // *** State to control Modal visibility ***
+  const [isRequestFormVisible, setIsRequestFormVisible] = useState(false);
+  const [refreshRequestsKey, setRefreshRequestsKey] = useState(0); // State to trigger RequestList refresh
+
   const fetchEventDetails = useCallback(async () => {
-    if (!id) return;
+    if (!id) {
+      setError("Event ID is missing.");
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
-      
-      // Extract the base UUID from the composite id
+
       const originalId = extractOriginalId(id);
-      // Also extract the occurrence part, if any.
-      let occurrencePart = extractOccurrenceTime(id);
-      
-      // Fetch event template using originalId
-      const { data: eventData, error: eventError } = await getMeditationEventById(originalId);
-      if (eventError) {
-        console.error('Error fetching event details:', eventError);
-        setError('Failed to load meditation details. Please try again later.');
-        return;
+      if (!originalId) {
+         setError("Invalid Event ID format.");
+         setLoading(false);
+         return;
       }
-      if (!eventData) {
-        setError('Meditation event not found.');
-        return;
-      }
-      
-      // If an occurrence time was provided, adjust the event start_time.
-      if (occurrencePart) {
-        // If the occurrence is in the past, compute the next upcoming occurrence.
-        let occurrenceDate = new Date(occurrencePart);
-        if (occurrenceDate <= new Date() && eventData.recurrence_type) {
-          occurrencePart = getNextOccurrence(occurrencePart, eventData.recurrence_type);
-        }
-        eventData.start_time = occurrencePart;
-      }
-      
-      setEvent(eventData);
-      
-      // Get participant count
-      if (eventData.id) {
-        try {
-          const { data: participantsData, error: participantsError } = await supabase
-            .rpc('get_participant_count', { event_id: eventData.id });
-          if (!participantsError && participantsData !== null) {
-            setParticipantCount(participantsData);
-          }
-        } catch (err) {
-          console.error('Error getting participant count:', err);
-        }
-      }
-      
-      // Check if the user has RSVPed
-      if (user && user !== true && eventData.id) {
-        try {
-          const { data: rsvpData, error: rsvpError } = await supabase
+
+      // Use Promise.all for concurrent fetching
+      const [eventResult, participantsResult, rsvpResult] = await Promise.all([
+        getMeditationEventById(originalId),
+        supabase.rpc('get_participant_count', { p_event_id: originalId }), // Ensure RPC param name matches
+        (user && user !== true) ? supabase
             .from('event_rsvps')
-            .select('id')
-            .eq('event_id', eventData.id)
+            .select('id', { count: 'exact', head: true }) // More efficient count check
+            .eq('event_id', originalId)
             .eq('user_id', user.id)
-            .maybeSingle();
-          setIsRSVPed(!!rsvpData);
-        } catch (err) {
-          console.error('Error checking RSVP:', err);
-        }
+            .maybeSingle() : Promise.resolve({ count: 0, error: null }) // Resolve for guests
+      ]);
+
+      // Handle Event Fetching
+      if (eventResult.error) {
+        console.error('Error fetching event details:', eventResult.error);
+        setError('Failed to load meditation details.');
+        setEvent(null); // Clear event data on error
+      } else if (!eventResult.data) {
+        setError('Meditation event not found.');
+        setEvent(null);
+      } else {
+        setEvent(eventResult.data);
       }
+
+      // Handle Participant Count
+      if (participantsResult.error) {
+         console.error('Error getting participant count:', participantsResult.error);
+         setParticipantCount(0); // Default to 0 on error
+      } else {
+         setParticipantCount(participantsResult.data ?? 0);
+      }
+
+      // Handle RSVP Check
+      if (rsvpResult?.error) {
+         console.error('Error checking RSVP:', rsvpResult.error);
+         setIsRSVPed(false); // Default to false on error
+      } else {
+         setIsRSVPed(!!rsvpResult?.count && rsvpResult.count > 0);
+      }
+
     } catch (err) {
-      console.error('Error in fetchEventDetails:', err);
+      console.error('Error in fetchEventDetails (catch block):', err);
       setError('An unexpected error occurred. Please try again.');
+      setEvent(null);
     } finally {
       setLoading(false);
     }
-  }, [id, user]);
-  
+  }, [id, user]); // user dependency is important for RSVP check
+
   useFocusEffect(
     useCallback(() => {
       fetchEventDetails();
+      // Optional: Reset modal state when screen gains focus
+      // setIsRequestFormVisible(false);
     }, [fetchEventDetails])
   );
-  
+
+  // Function to manually trigger refresh if needed
   const handleRefresh = () => {
     fetchEventDetails();
+    setRefreshRequestsKey(prev => prev + 1); // Increment key to refresh RequestList
   };
-  
+
+  // Called when the RequestForm is submitted successfully
+  const handleFormSubmit = () => {
+    setIsRequestFormVisible(false); // Close the modal
+    setRefreshRequestsKey(prev => prev + 1); // Trigger RequestList refresh
+    // Optional: Show a success message
+    // Alert.alert("Success", "Your request has been submitted.");
+  };
+
+  // Called when the RequestForm is cancelled
+  const handleFormCancel = () => {
+    setIsRequestFormVisible(false); // Close the modal
+  };
+
   const handleJoin = async () => {
+    // Simplified handleJoin - navigates directly if event exists
     if (!event) return;
-    setJoinLoading(true);
+    setJoinLoading(true); // Consider setting loading state
     try {
       const originalId = extractOriginalId(event.id);
+      // Ensure required parameters are passed correctly
       router.push(`/meditation/sync?id=${originalId}&duration=${event.duration}`);
     } catch (error) {
       console.error('Error navigating to sync screen:', error);
       Alert.alert('Error', 'Failed to join meditation. Please try again.');
-    } finally {
-      setJoinLoading(false);
+      setJoinLoading(false); // Reset loading on error
     }
+    // Note: setJoinLoading(false) might ideally be in the finally block
+    // or handled by navigation events if the screen unmounts.
   };
-  
-  const handleToggleRSVP = async () => {
+
+  // --- handleToggleRSVP remains largely the same ---
+    const handleToggleRSVP = async () => {
     if (!event) return;
     if (!user || user === true) {
       Alert.alert(
@@ -214,251 +239,364 @@ export default function MeditationDetailScreen() {
       );
       return;
     }
-    
+
     setRSVPLoading(true);
     try {
       const originalId = extractOriginalId(event.id);
-      
+
       if (isRSVPed) {
-        // Remove RSVP
+        // Delete RSVP
         const { error } = await supabase
           .from('event_rsvps')
           .delete()
           .eq('event_id', originalId)
           .eq('user_id', user.id);
-        if (error) {
-          console.error('Error removing RSVP:', error);
-          Alert.alert('Error', 'Failed to remove reminder. Please try again.');
-          return;
-        }
+
+        if (error) throw error; // Throw error to be caught below
+
+        // TODO: Cancel the actual notification using the stored notification_id if possible
+        // This requires storing and retrieving the notification_id associated with the RSVP
+
         setIsRSVPed(false);
         Alert.alert('Reminder Removed', 'You will no longer receive a notification for this event.');
+
       } else {
-        // Add RSVP and schedule notification using user settings
-        try {
-          const notificationId = await scheduleEventReminder(
-            originalId,
-            event.title,
-            event.start_time
-          );
-          const { error } = await supabase
-            .from('event_rsvps')
-            .insert({
-              event_id: originalId,
-              user_id: user.id,
-              notification_id: notificationId,
-              created_at: new Date().toISOString()
-            });
-          if (error) {
-            console.error('Error adding RSVP:', error);
-            Alert.alert('Error', 'Failed to set reminder. Please try again.');
-            return;
-          }
-          setIsRSVPed(true);
-          Alert.alert(
-            'Reminder Set',
-            'You will receive a notification before this meditation session begins.',
-            [
-              { text: 'OK' },
-              { text: 'Notification Settings', onPress: () => router.push('/settings/notifications') }
-            ]
-          );
-        } catch (error) {
-          console.error('Error scheduling reminder:', error);
-          Alert.alert('Error', 'Failed to set reminder. Please try again.');
+        // Add RSVP and schedule notification
+        const notificationId = await scheduleEventReminder(
+          originalId,
+          event.title,
+          event.start_time
+        );
+
+        if (!notificationId) {
+           throw new Error("Failed to schedule notification reminder.");
         }
+
+        const { error } = await supabase
+          .from('event_rsvps')
+          .insert({
+            event_id: originalId,
+            user_id: user.id,
+            notification_id: notificationId, // Store the notification ID
+          });
+
+        if (error) throw error; // Throw error to be caught below
+
+        setIsRSVPed(true);
+        Alert.alert(
+          'Reminder Set',
+          'You will receive a notification before this meditation session begins.',
+          [
+            { text: 'OK' },
+            { text: 'Notification Settings', onPress: () => router.push('/settings/notifications') }
+          ]
+        );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error toggling RSVP:', error);
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      Alert.alert('Error', `Failed to ${isRSVPed ? 'remove' : 'set'} reminder: ${error.message || 'Please try again.'}`);
+      // Optionally revert UI state if operation failed
+      // setIsRSVPed(!isRSVPed);
     } finally {
       setRSVPLoading(false);
     }
   };
-  
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString(undefined, {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-  
-  const getRecurrenceText = (event: any) => {
-    if (!event.is_recurring) return 'One-time event';
-    const recurrenceMap = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' };
-    return `${recurrenceMap[event.recurrence_type] || 'Recurring'} event`;
-  };
-  
-  const isHappeningNow = (event: any): boolean => {
-    if (!event) return false;
-    const now = new Date();
-    const startTime = new Date(event.start_time);
-    const endTime = new Date(startTime.getTime() + event.duration * 60000);
-    return now >= startTime && now <= endTime;
-  };
-  
-  const getEventTiming = (event: any): { text: string; isLive: boolean } => {
-    if (!event) return { text: '', isLive: false };
-    const now = new Date();
-    const startTime = new Date(event.start_time);
-    const endTime = new Date(startTime.getTime() + event.duration * 60000);
-    if (now < startTime) {
-      const diffMs = startTime.getTime() - now.getTime();
-      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      const diffHrs = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const diffMins = Math.round((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-      if (diffDays > 0) {
-        return { text: `Starts in ${diffDays}d ${diffHrs}h`, isLive: false };
-      } else if (diffHrs > 0) {
-        return { text: `Starts in ${diffHrs}h ${diffMins}m`, isLive: false };
-      } else {
-        return { text: `Starts in ${diffMins}m`, isLive: false };
-      }
-    } else if (now <= endTime) {
-      return { text: 'Happening Now', isLive: true };
-    } else {
-      return { text: 'Ended', isLive: false };
-    }
-  };
-  
+  // ---
+
+  // Loading State
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, isDark && styles.darkContainer]}>
-        <Stack.Screen
-          options={{
-            title: 'Meditation Details',
-            headerLeft: () => <BackButton />,
-            headerShown: true,
-          }}
-        />
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <Stack.Screen options={{ title: 'Loading...', headerLeft: () => <BackButton />, headerShown: true }} />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={[styles.loadingText, isDark && styles.darkText]}>
-            Loading meditation details...
-          </Text>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.bodyText }]}>Loading Meditation...</Text>
         </View>
       </SafeAreaView>
     );
   }
-  
-  if (error) {
+
+  // Error State
+  if (error || !event) {
     return (
-      <SafeAreaView style={[styles.container, isDark && styles.darkContainer]}>
-        <Stack.Screen
-          options={{
-            title: 'Meditation Details',
-            headerLeft: () => <BackButton />,
-            headerShown: true,
-          }}
-        />
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <Stack.Screen options={{ title: 'Error', headerLeft: () => <BackButton />, headerShown: true }} />
         <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle-outline" size={60} color="red" />
-          <Text style={[styles.errorText, isDark && styles.darkText]}>{error}</Text>
-          <Button variant="primary" onPress={handleRefresh} style={styles.refreshButton}>
-            Try Again
-          </Button>
+          <Ionicons name="alert-circle-outline" size={60} color={colors.secondary} />
+          <Text style={[styles.errorText, { color: colors.bodyText }]}>
+            {error || 'Could not load event details.'}
+          </Text>
+           <Button onPress={handleRefresh} variant="outline">
+             Try Again
+           </Button>
         </View>
       </SafeAreaView>
     );
   }
-  
-  if (!event) return null;
-  
-  const tradition = FAITH_TRADITIONS.find(t => t.id === event.tradition) || FAITH_TRADITIONS[0];
+
+  // Event loaded state
+  const eventStart = new Date(event.start_time);
+  const now = new Date();
+  const canBegin = now >= eventStart; // Can begin if current time is past start time
+
+  // --- Helper functions (formatDate, getRecurrenceText, isHappeningNow, getEventTiming) remain the same ---
+    const formatDate = (dateString: string | null): string => {
+      if (!dateString) return 'Date not available';
+      try {
+        const date = new Date(dateString);
+        // Check if date is valid
+        if (isNaN(date.getTime())) {
+          return 'Invalid date';
+        }
+        return date.toLocaleString(undefined, { // Use locale default format
+          weekday: 'short', // e.g., Mon
+          month: 'short', // e.g., Jan
+          day: 'numeric', // e.g., 15
+          hour: 'numeric', // e.g., 1 PM or 13
+          minute: '2-digit', // e.g., 05
+          // year: 'numeric' // Optional: Add year if needed
+        });
+      } catch (e) {
+        console.error("Error formatting date:", e);
+        return 'Error formatting date';
+      }
+    };
+
+    const getRecurrenceText = (evt: any): string => {
+      if (!evt?.is_recurring) return 'One-time event';
+      const recurrenceMap: { [key: string]: string } = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' };
+      return `${recurrenceMap[evt.recurrence_type] || 'Recurring'} event`;
+    };
+
+    const isHappeningNow = (evt: any): boolean => {
+       if (!evt?.start_time || !evt?.duration) return false;
+       try {
+         const startTime = new Date(evt.start_time);
+         // Ensure duration is a number
+         const durationMinutes = Number(evt.duration);
+         if (isNaN(durationMinutes)) return false;
+
+         const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
+         const currentTime = new Date();
+         return currentTime >= startTime && currentTime <= endTime;
+       } catch (e) {
+          console.error("Error in isHappeningNow:", e);
+          return false;
+       }
+    };
+
+    const getEventTiming = (evt: any): { text: string; isLive: boolean; canJoin: boolean } => {
+      if (!evt?.start_time || !evt?.duration) {
+         return { text: 'Timing unavailable', isLive: false, canJoin: false };
+      }
+      try {
+        const startTime = new Date(evt.start_time);
+        const durationMinutes = Number(evt.duration);
+         if (isNaN(startTime.getTime()) || isNaN(durationMinutes)) {
+           return { text: 'Invalid time', isLive: false, canJoin: false };
+         }
+
+        const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
+        const currentTime = new Date();
+        // Add a grace period (e.g., 5 minutes before start)
+        const joinStartTime = new Date(startTime.getTime() - 5 * 60000);
+
+        const canJoin = currentTime >= joinStartTime && currentTime <= endTime;
+
+        if (currentTime < startTime) {
+          const diffMs = startTime.getTime() - currentTime.getTime();
+          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+          const diffHrs = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+          const diffMins = Math.round((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+          let startsInText = 'Starts ';
+          if (diffDays > 0) startsInText += `in ${diffDays}d ${diffHrs}h`;
+          else if (diffHrs > 0) startsInText += `in ${diffHrs}h ${diffMins}m`;
+          else if (diffMins > 0) startsInText += `in ${diffMins}m`;
+          else startsInText = 'Starting soon';
+
+          return { text: startsInText, isLive: false, canJoin: canJoin };
+
+        } else if (currentTime <= endTime) {
+          return { text: 'Happening Now', isLive: true, canJoin: true };
+        } else {
+          return { text: 'Ended', isLive: false, canJoin: false };
+        }
+      } catch (e) {
+         console.error("Error in getEventTiming:", e);
+         return { text: 'Timing error', isLive: false, canJoin: false };
+      }
+    };
+  // ---
+
   const timing = getEventTiming(event);
-  
+  const traditionInfo = FAITH_TRADITIONS.find(t => t.id === event.tradition);
+
   return (
-    <SafeAreaView style={[styles.container, isDark && styles.darkContainer]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen
         options={{
-          title: 'Meditation Details',
+          title: event?.title || 'Meditation', // Use event title if available
+          headerTitleStyle: { color: colors.headerText },
+          headerStyle: { backgroundColor: colors.background },
           headerLeft: () => <BackButton />,
           headerShown: true,
         }}
       />
-      <ScrollView style={styles.scrollContainer}>
+      <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <View style={[styles.traditionBadge, { backgroundColor: tradition.color }]}>
-            <Ionicons name={(tradition as any).ionicon} size={24} color="#fff" />
-          </View>
-          <Text style={[styles.title, isDark && styles.darkText]}>{event.title}</Text>
+          {traditionInfo && (
+             <View style={[styles.traditionBadge, { backgroundColor: traditionInfo.color || colors.primary }]}>
+               <Ionicons name={traditionInfo.ionicon as any} size={24} color="#fff" />
+             </View>
+          )}
+          <Text style={[styles.title, { color: colors.headerText }]}>{event.title}</Text>
           <View style={styles.timingRow}>
             {timing.isLive ? (
-              <View style={styles.liveContainer}>
+              <View style={[styles.liveContainer, { backgroundColor: colors.secondary }]}>
                 <View style={styles.liveDot} />
                 <Text style={styles.liveText}>{timing.text}</Text>
               </View>
             ) : (
-              <Text style={[styles.timing, isDark && styles.darkTiming]}>{timing.text}</Text>
+              <Text style={[styles.timing, { color: colors.accent }]}>{timing.text}</Text>
             )}
           </View>
         </View>
-        
-        <View style={styles.infoSection}>
+
+        <View style={[styles.infoSection, { borderBottomColor: colors.border || colors.lightGray }]}>
           <View style={styles.infoRow}>
-            <Ionicons name="calendar-outline" size={20} color={isDark ? DARK_COLORS.gray : LIGHT_COLORS.gray} />
-            <Text style={[styles.infoText, isDark && styles.darkText]}>
+            <Ionicons name="calendar-outline" size={20} color={colors.gray} />
+            <Text style={[styles.infoText, { color: colors.bodyText }]}>
               {formatDate(event.start_time)}
             </Text>
           </View>
-          
+
           <View style={styles.infoRow}>
-            <Ionicons name="time-outline" size={20} color={isDark ? DARK_COLORS.gray : LIGHT_COLORS.gray} />
-            <Text style={[styles.infoText, isDark && styles.darkText]}>
-              {event.duration} minutes
+            <Ionicons name="time-outline" size={20} color={colors.gray} />
+            <Text style={[styles.infoText, { color: colors.bodyText }]}>
+              {event.duration || 'N/A'} minutes
             </Text>
           </View>
-          
+
           <View style={styles.infoRow}>
-            <Ionicons name="repeat-outline" size={20} color={isDark ? DARK_COLORS.gray : LIGHT_COLORS.gray} />
-            <Text style={[styles.infoText, isDark && styles.darkText]}>
+            <Ionicons name="repeat-outline" size={20} color={colors.gray} />
+            <Text style={[styles.infoText, { color: colors.bodyText }]}>
               {getRecurrenceText(event)}
             </Text>
           </View>
-          
+
           <View style={styles.infoRow}>
-            <Ionicons name="people-outline" size={20} color={isDark ? DARK_COLORS.gray : LIGHT_COLORS.gray} />
-            <Text style={[styles.infoText, isDark && styles.darkText]}>
-              {participantCount || 0} {participantCount === 1 ? 'person' : 'people'} participating
+            <Ionicons name="people-outline" size={20} color={colors.gray} />
+            <Text style={[styles.infoText, { color: colors.bodyText }]}>
+              {participantCount} {participantCount === 1 ? 'person' : 'people'} participating
             </Text>
           </View>
-          
-          {event.created_by && (
+
+          {event.created_by && event.created_by !== 'guest-user' && ( // Only show if created by a non-guest user
             <HostInfo userId={event.created_by} isDark={isDark} />
           )}
         </View>
-        
+
         {event.description ? (
-          <View style={styles.descriptionSection}>
-            <Text style={[styles.sectionTitle, isDark && styles.darkText]}>About this meditation</Text>
-            <Text style={[styles.description, isDark && styles.darkText]}>
+          <View style={[styles.descriptionSection, { borderBottomColor: colors.border || colors.lightGray }]}>
+            <Text style={[styles.sectionTitle, { color: colors.headerText }]}>About this meditation</Text>
+            <Text style={[styles.description, { color: colors.bodyText }]}>
               {event.description}
             </Text>
           </View>
         ) : null}
-        
-        <View style={styles.actionSection}>
-          {isHappeningNow(event) ? (
-            <Button variant="primary" onPress={handleJoin} loading={joinLoading} style={styles.actionButton}>
-              Join Meditation Now
-            </Button>
-          ) : (
-            <Button
-              variant={isRSVPed ? "secondary" : "primary"}
-              onPress={handleToggleRSVP}
-              loading={rsvpLoading}
-              style={styles.actionButton}
-            >
-              {isRSVPed ? 'Cancel Reminder' : 'Set Reminder'}
-            </Button>
-          )}
-        </View>
+
+        {/* --- Action Buttons / Request Area --- */}
+        {timing.canJoin ? ( // Show "Join" button if meditation is happening or starting soon
+            <View style={styles.actionSection}>
+              <Button
+                 variant="primary"
+                 onPress={handleJoin}
+                 loading={joinLoading}
+                 style={styles.actionButton}
+                 size="large"
+                 fullWidth
+               >
+                 {timing.isLive ? 'Join Meditation Now' : 'Join Meditation'}
+               </Button>
+            </View>
+         ) : timing.text !== 'Ended' ? ( // Show RSVP if not ended and cannot join yet
+            <View style={styles.actionSection}>
+                <Button
+                    variant={isRSVPed ? "secondary" : "primary"} // Use secondary when RSVPed
+                    onPress={handleToggleRSVP}
+                    loading={rsvpLoading}
+                    style={styles.actionButton}
+                    size="large"
+                    fullWidth
+                    iconLeft={isRSVPed ? 'notifications-off-outline' : 'notifications-outline'} // Add icon
+                >
+                    {isRSVPed ? 'Cancel Reminder' : 'Set Reminder'}
+                </Button>
+            </View>
+         ) : ( // Show "Ended" message if event has ended
+              <View style={styles.actionSection}>
+                  <Text style={[styles.infoText, { color: colors.gray, textAlign: 'center'}]}>This meditation has ended.</Text>
+              </View>
+         )}
+
+
+        {/* --- Requests Section (Always visible if event hasn't ended) --- */}
+        {timing.text !== 'Ended' && (
+          <>
+            <View style={styles.actionSection}>
+              {/* Button to open the Request Form Modal */}
+              <Button
+                variant="outline"
+                onPress={() => setIsRequestFormVisible(true)} // Open the modal
+                size="large"
+                fullWidth
+                iconLeft="add-circle-outline"
+              >
+                Submit Prayer/Healing Request
+              </Button>
+            </View>
+
+            <View style={[styles.requestsContainer, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.requestsTitle, { color: colors.primary }]}>
+                Community Requests
+              </Text>
+              {/* Pass refreshRequestsKey to RequestList to trigger re-fetch */}
+              <RequestList refreshKey={refreshRequestsKey} />
+            </View>
+          </>
+        )}
+
       </ScrollView>
+
+      {/* --- Request Form Modal --- */}
+      <Modal
+        animationType="slide" // Or "fade"
+        transparent={false} // Make modal background opaque
+        visible={isRequestFormVisible}
+        onRequestClose={() => {
+          // Android back button press
+          handleFormCancel();
+        }}
+      >
+        {/* Use SafeAreaView inside Modal for better layout */}
+        <SafeAreaView style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+           {/* Optional: Add a header with a close button */}
+           <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, {color: colors.headerText}]}>Submit Request</Text>
+                <TouchableOpacity onPress={handleFormCancel} style={styles.closeButton}>
+                    <Ionicons name="close-circle" size={30} color={colors.primary} />
+                </TouchableOpacity>
+           </View>
+           <View style={styles.modalContent}>
+                <RequestForm
+                    onSubmit={handleFormSubmit}
+                    onCancel={handleFormCancel}
+                />
+           </View>
+        </SafeAreaView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -466,68 +604,69 @@ export default function MeditationDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  darkContainer: {
-    backgroundColor: DARK_COLORS.background,
+    // backgroundColor set dynamically
   },
   scrollContainer: {
     flex: 1,
   },
+  scrollContent: {
+     paddingBottom: 40, // Ensure space at the bottom
+  },
   header: {
-    padding: 20,
+    paddingVertical: 25, // More vertical padding
+    paddingHorizontal: 20,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.lightGray,
+    // borderBottomColor set dynamically
   },
   backButton: {
-    padding: 10,
+    marginLeft: Platform.OS === 'ios' ? 10 : 0, // Adjust margin for iOS back button placement
+    padding: 5, // Easier to tap
   },
   traditionBadge: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 60, // Slightly larger
+    height: 60,
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 15,
+    elevation: 3, // Add subtle shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
   },
   title: {
-    fontSize: 24,
+    fontSize: 26, // Larger title
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 10,
-    color: LIGHT_COLORS.headerText,
-  },
-  darkText: {
-    color: DARK_COLORS.headerText,
+    // color set dynamically
   },
   timingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 5,
+    marginTop: 8, // More space
   },
   timing: {
     fontSize: 16,
-    color: COLORS.accent,
     fontWeight: '600',
-  },
-  darkTiming: {
-    color: DARK_COLORS.accent,
+    // color set dynamically
   },
   liveContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F95738',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+    // backgroundColor set dynamically
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15, // More rounded
   },
   liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
     backgroundColor: '#fff',
-    marginRight: 5,
+    marginRight: 7,
   },
   liveText: {
     color: '#fff',
@@ -537,41 +676,48 @@ const styles = StyleSheet.create({
   infoSection: {
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.lightGray,
+    // borderBottomColor set dynamically
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 18, // Increased spacing
+  },
+  hostAvatar: {
+     width: 24,
+     height: 24,
+     borderRadius: 12,
+     marginRight: 10,
+     backgroundColor: '#ccc' // Placeholder bg
   },
   infoText: {
     fontSize: 16,
-    marginLeft: 10,
-    color: LIGHT_COLORS.bodyText,
-    flex: 1,
+    marginLeft: 12, // Consistent margin
+    // color set dynamically
+    flexShrink: 1, // Allow text to wrap if needed
   },
   descriptionSection: {
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.lightGray,
+    // borderBottomColor set dynamically
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: LIGHT_COLORS.headerText,
+    fontWeight: '600', // Use 600 for titles
+    marginBottom: 12,
+    // color set dynamically
   },
   description: {
     fontSize: 16,
     lineHeight: 24,
-    color: LIGHT_COLORS.bodyText,
+    // color set dynamically
   },
   actionSection: {
-    padding: 20,
-    paddingBottom: 40,
+    paddingHorizontal: 20,
+    paddingVertical: 15, // Add vertical padding
   },
   actionButton: {
-    marginBottom: 15,
+    // No marginBottom needed if using gap or separate sections
   },
   loadingContainer: {
     flex: 1,
@@ -582,30 +728,70 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     marginTop: 15,
-    color: LIGHT_COLORS.bodyText,
+    // color set dynamically
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 30, // More padding for error state
   },
   errorText: {
-    fontSize: 16,
+    fontSize: 17, // Slightly larger error text
     textAlign: 'center',
-    marginTop: 15,
+    marginTop: 20,
+    marginBottom: 25,
+    lineHeight: 24,
+    // color set dynamically
+  },
+  buttonContainer: { // Style specifically for the "Begin" / "Submit" buttons if needed
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      gap: 10, // Add gap between buttons if they appear together
+  },
+  requestsContainer: {
+    // backgroundColor set dynamically
+    borderRadius: 12,
+    marginHorizontal: 15, // Consistent margin
     marginBottom: 20,
-    color: LIGHT_COLORS.bodyText,
+    padding: 15, // Inner padding
+    marginTop: 10, // Space above requests section
+    elevation: 1, // Subtle elevation
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
   },
-  refreshButton: {
-    minWidth: 120,
+  requestsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 15, // More space below title
+    // color set dynamically
+    textAlign: 'center',
   },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-    marginTop: 5,
+  // --- Modal Styles ---
+  modalContainer: {
+    flex: 1,
+    // backgroundColor set dynamically
+  },
+  modalHeader: {
+     flexDirection: 'row',
+     justifyContent: 'space-between',
+     alignItems: 'center',
+     paddingHorizontal: 15,
+     paddingVertical: 10,
+     borderBottomWidth: 1,
+     borderBottomColor: '#ccc' // Use colors.border here
+  },
+  modalTitle: {
+     fontSize: 18,
+     fontWeight: '600',
+  },
+  closeButton: {
+     padding: 5, // Hit area
+  },
+  modalContent: {
+    flex: 1, // Allows RequestForm's ScrollView/KAV to work
+    // Padding/margin is handled within RequestForm or its internal ScrollView
   },
 });
