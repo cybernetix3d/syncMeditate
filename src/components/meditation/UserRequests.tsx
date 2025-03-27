@@ -22,20 +22,23 @@ interface MeditationRequest {
   is_active: boolean;
 }
 
-export default function UserRequests() {
+export default function UserRequests({ userId }: { userId?: string }) {
   const { colors } = useTheme();
   const { user } = useAuth();
   const [requests, setRequests] = useState<MeditationRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadRequests = async () => {
-    if (!user || typeof user === 'boolean') return;
+    // Use provided userId if available, otherwise fall back to user from context
+    const currentUserId = userId || (user && typeof user !== 'boolean' ? user.id : null);
+    
+    if (!currentUserId) return;
 
     try {
       const { data, error } = await supabase
         .from('meditation_requests')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', currentUserId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
@@ -50,7 +53,8 @@ export default function UserRequests() {
   };
 
   useEffect(() => {
-    if (!user || typeof user === 'boolean') return;
+    const currentUserId = userId || (user && typeof user !== 'boolean' ? user.id : null);
+    if (!currentUserId) return;
     
     loadRequests();
 
@@ -63,7 +67,7 @@ export default function UserRequests() {
           event: 'UPDATE',
           schema: 'public',
           table: 'meditation_requests',
-          filter: `user_id=eq.${user.id}`,
+          filter: `user_id=eq.${currentUserId}`,
         },
         (payload) => {
           console.log('Request updated:', payload);
@@ -75,10 +79,11 @@ export default function UserRequests() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, userId]);
 
   const handleCancelRequest = async (requestId: string) => {
-    if (!user || typeof user === 'boolean') return;
+    const currentUserId = userId || (user && typeof user !== 'boolean' ? user.id : null);
+    if (!currentUserId) return;
 
     Alert.alert(
       'Cancel Request',
@@ -91,14 +96,14 @@ export default function UserRequests() {
           onPress: async () => {
             try {
               console.log('Attempting to cancel request:', requestId);
-              console.log('Current user ID:', user.id);
+              console.log('Current user ID:', currentUserId);
 
               // First, verify the request exists and belongs to the user
               const { data: requestData, error: fetchError } = await supabase
                 .from('meditation_requests')
                 .select('*')
                 .eq('id', requestId)
-                .eq('user_id', user.id)
+                .eq('user_id', currentUserId)
                 .single();
 
               if (fetchError) {
@@ -118,13 +123,13 @@ export default function UserRequests() {
                 .from('meditation_requests')
                 .update({ is_active: false })
                 .eq('id', requestId)
-                .eq('user_id', user.id)
+                .eq('user_id', currentUserId)
                 .select('*');
 
               if (updateError) {
                 console.error('Error updating request:', updateError);
                 console.error('Request ID:', requestId);
-                console.error('User ID:', user.id);
+                console.error('User ID:', currentUserId);
                 throw updateError;
               }
 

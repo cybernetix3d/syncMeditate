@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -6,7 +6,8 @@ import {
   ScrollView, 
   TouchableOpacity, 
   RefreshControl,
-  ActivityIndicator 
+  ActivityIndicator,
+  Alert
 } from 'react-native';
 import { Link, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +19,7 @@ import Button from '../../src/components/common/Button';
 import { COLORS, COMMON_STYLES } from '../../src/constants/Styles';
 import { useTheme } from '../../src/context/ThemeContext';
 import { UserProfile } from '../../src/context/AuthProvider';
+import { scheduleEventReminder, cancelNotification } from '@/src/services/NotificationService';
 
 interface MeditationEvent {
   id: string;
@@ -78,6 +80,157 @@ interface GlobalActivity {
   count: number;
 }
 
+interface EventCardProps {
+  event: MeditationEvent;
+  attendanceStatus: string | null;
+  isRSVPed: boolean;
+  onRSVP: (event: MeditationEvent) => void;
+  onSetAttendance: (event: MeditationEvent, status: 'attending' | 'interested' | null) => void;
+}
+
+const EventCard: React.FC<EventCardProps> = ({ 
+  event, 
+  attendanceStatus,
+  isRSVPed,
+  onRSVP,
+  onSetAttendance
+}) => {
+  const router = useRouter();
+  const { colors } = useTheme();
+  const traditionObj = FAITH_TRADITIONS.find(t => t.id === (event.tradition || 'secular')) || FAITH_TRADITIONS[0];
+  
+  const isHappeningNow = (): boolean => {
+    const now = new Date();
+    const eventStart = new Date(event.start_time);
+    const eventEnd = new Date(eventStart.getTime() + event.duration * 60000);
+    return now >= eventStart && now <= eventEnd;
+  };
+  
+  const canJoin = (): boolean => {
+    const now = new Date();
+    const eventStart = new Date(event.start_time);
+    return now >= eventStart;
+  };
+  
+  const formatTime = (date: Date): string => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+  
+  const getTimeUntil = (): string | null => {
+    const now = new Date();
+    const eventStart = new Date(event.start_time);
+    const diffMs = eventStart.getTime() - now.getTime();
+    if (diffMs < 0) return null;
+    const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMins = Math.round((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    return diffHrs > 0 ? `In ${diffHrs}h ${diffMins}m` : `In ${diffMins}m`;
+  };
+  
+  const handlePress = () => {
+    if (isHappeningNow()) {
+      router.push(`/meditation/sync?id=${event.id}&duration=${event.duration}`);
+    } else {
+      router.push(`/meditation/${event.id}`);
+    }
+  };
+  
+  const live = isHappeningNow();
+  const timeUntil = getTimeUntil();
+  
+  return (
+    <TouchableOpacity 
+      style={[styles.meditationCard, { backgroundColor: colors.surface }]} 
+      onPress={handlePress}
+      activeOpacity={0.7}
+    >
+      <View style={styles.cardHeader}>
+        <View style={[styles.traditionIcon, { backgroundColor: traditionObj.color }]}>
+          <Ionicons name={traditionObj.ionicon as any} size={20} color="#FFF" />
+        </View>
+        <View style={styles.cardTitleContainer}>
+          <Text style={[styles.cardTitle, { color: colors.primary }]}>{event.title}</Text>
+          <Text style={[styles.cardSubtitle, { color: colors.gray }]}>
+            {formatTime(new Date(event.start_time))}
+          </Text>
+        </View>
+      </View>
+      
+      <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
+        <View style={styles.cardDetailItem}>
+          <Ionicons name="time-outline" size={16} color={colors.gray} />
+          <Text style={[styles.cardDetailText, { color: colors.gray }]}>{event.duration} min</Text>
+        </View>
+        
+        <View style={styles.cardDetailItem}>
+          <Ionicons name="people-outline" size={16} color={colors.gray} />
+          <Text style={[styles.cardDetailText, { color: colors.gray }]}>
+            {event.participant_count || 0} active
+          </Text>
+        </View>
+        
+        <View style={styles.cardActions}>
+          {/* RSVP button */}
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              { backgroundColor: isRSVPed ? colors.secondary : colors.surface }
+            ]}
+            onPress={() => onRSVP(event)}
+          >
+            <Ionicons
+              name={isRSVPed ? "notifications" : "notifications-outline"}
+              size={18}
+              color={isRSVPed ? colors.white : colors.gray}
+            />
+          </TouchableOpacity>
+          
+          {/* Attendance buttons */}
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              { backgroundColor: attendanceStatus === 'attending' ? colors.primary : colors.surface }
+            ]}
+            onPress={() => onSetAttendance(event, attendanceStatus === 'attending' ? null : 'attending')}
+          >
+            <Ionicons
+              name={attendanceStatus === 'attending' ? "checkmark-circle" : "checkmark-circle-outline"}
+              size={18}
+              color={attendanceStatus === 'attending' ? colors.white : colors.gray}
+            />
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              { backgroundColor: attendanceStatus === 'interested' ? colors.accent : colors.surface }
+            ]}
+            onPress={() => onSetAttendance(event, attendanceStatus === 'interested' ? null : 'interested')}
+          >
+            <Ionicons
+              name={attendanceStatus === 'interested' ? "star" : "star-outline"}
+              size={18}
+              color={attendanceStatus === 'interested' ? colors.white : colors.gray}
+            />
+          </TouchableOpacity>
+        </View>
+        
+        {/* Join button / Live indicator */}
+        {live ? (
+          <View style={[styles.joinNowButton, styles.liveButton]}>
+            <View style={styles.liveIndicator} />
+            <Text style={[styles.joinNowText, styles.liveText]}>Live Now</Text>
+          </View>
+        ) : timeUntil ? (
+          <View style={styles.timeUntilContainer}>
+            <Ionicons name="time-outline" size={14} color={colors.primary} />
+            <Text style={[styles.timeUntilText, { color: colors.primary }]}>{timeUntil}</Text>
+          </View>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+};
+
 const MeditationCard: React.FC<{
   title: string;
   subtitle: string;
@@ -137,7 +290,7 @@ const MeditationCard: React.FC<{
     >
       <View style={styles.cardHeader}>
         <View style={[styles.traditionIcon, { backgroundColor: traditionObj.color }]}>
-          <Ionicons name={traditionObj.icon as any} size={20} color={COLORS.pastel2} />
+          <Ionicons name={traditionObj.ionicon as any} size={20} color={COLORS.pastel2} />
         </View>
         <View style={styles.cardTitleContainer}>
           <Text style={styles.cardTitle}>{title}</Text>
@@ -182,107 +335,126 @@ const MeditationCard: React.FC<{
 const isUserProfile = (user: boolean | UserProfile | null): user is UserProfile =>
   typeof user !== 'boolean' && user !== null && 'id' in user;
 
+// Helper functions for event status
+const getEventAttendanceStatus = (eventId: string, statuses: Record<string, string>): string | null => {
+  // Extract the original event ID (removing the date-specific suffix)
+  let originalId = eventId;
+  if (eventId.includes('-')) {
+    const segments = eventId.split('-');
+    // If this looks like a UUID with date suffix, extract the complete UUID (first 5 segments)
+    if (segments.length > 5) {
+      originalId = segments.slice(0, 5).join('-'); // Join first 5 segments to form complete UUID
+    }
+  }
+  
+  return statuses[originalId] || null;
+};
+
+const isEventRSVPed = (eventId: string, rsvpedEventIds: string[]): boolean => {
+  // Extract the original event ID (removing the date-specific suffix)
+  let originalId = eventId;
+  if (eventId.includes('-')) {
+    const segments = eventId.split('-');
+    // If this looks like a UUID with date suffix, extract the complete UUID
+    if (segments.length > 5) {
+      originalId = segments.slice(0, 5).join('-');
+    }
+  }
+  return rsvpedEventIds.includes(originalId);
+};
+
 export default function HomeScreen() {
   const { user } = useAuth();
   const { currentEvent } = useMeditation();
   const { colors } = useTheme();
   const { refresh } = useLocalSearchParams();
+  const router = useRouter();
 
   const [globalEvents, setGlobalEvents] = useState<MeditationEvent[]>([]);
   const [recentEvents, setRecentEvents] = useState<MeditationCompletion[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [forceRefresh, setForceRefresh] = useState(0);
+  const [rsvpedEvents, setRsvpedEvents] = useState<string[]>([]);
+  const [attendanceStatuses, setAttendanceStatuses] = useState<Record<string, string>>({});
 
   const fetchMeditationData = async () => {
     try {
       console.log("FETCHING MEDITATION DATA", new Date().toISOString());
       setLoading(true);
       
-      // First, get user history from user_meditation_history (durations are in seconds)
-      if (isUserProfile(user)) {
-        const { data: rawHistory, error: rawHistoryError } = await supabase
-          .from('user_meditation_history')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('date', { ascending: false });
-          
-        console.log("RAW MEDITATION HISTORY:", 
-          rawHistory ? `Found ${rawHistory.length} entries` : 'No entries found', 
-          rawHistoryError);
-        
-        if (rawHistory && rawHistory.length > 0) {
-          const historyCompletions = rawHistory.map((history: MeditationHistory) => {
-            const completion: MeditationCompletion = {
-              id: history.id,
-              user_id: history.user_id,
-              event_id: history.event_id,
-              completed_at: history.date,
-              duration: history.duration, // duration in seconds
-              completed: true,
-              meditation_type: 'user_history',
-              meditation_events: null,
-              notes: history.notes,
-              tradition: history.tradition
-            };
-            return completion;
-          });
-          setRecentEvents(historyCompletions.slice(0, 10));
-        }
-      }
-      
+      // Get current date info for filtering events
       const now = new Date();
-// For global events, filter for events scheduled for today only.
-const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-const tomorrowStart = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
-
-const { data: eventsData, error: eventsError } = await supabase
-  .from('meditation_events')
-  .select(`
-    *,
-    meditation_participants (
-      id,
-      active
-    )
-  `)
-  .eq('is_global', true)
-  .gte('start_time', todayStart.toISOString())
-  .lt('start_time', tomorrowStart.toISOString())
-  .order('start_time', { ascending: true });
-
-if (eventsError) {
-  console.error('Error fetching global events:', eventsError);
-} else {
-  // Filter out events that have already ended.
-  const activeEvents = (eventsData || []).filter((event: MeditationEvent) => {
-    const eventStart = new Date(event.start_time);
-    // Calculate event end time (duration is in minutes)
-    const eventEnd = new Date(eventStart.getTime() + event.duration * 60000);
-    return eventEnd > now; // Only include events that haven't ended yet
-  }).map((event: MeditationEvent) => ({
-    ...event,
-    participant_count: event.meditation_participants?.filter(p => p.active)?.length || 0,
-  }));
-  setGlobalEvents(activeEvents);
-}
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const tomorrowStart = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
       
+      // =======================================================
+      // FETCH ALL GLOBAL EVENTS (both system and user-created)
+      // =======================================================
+      console.log(`Fetching global events between ${todayStart.toISOString()} and ${tomorrowStart.toISOString()}`);
+      
+      const { data: eventsData, error: eventsError } = await supabase
+        .from('meditation_events')
+        .select(`
+          *,
+          meditation_participants (
+            id,
+            active
+          )
+        `)
+        .eq('is_global', true)  // Filter only for is_global=true, but no other restrictions
+        .gte('start_time', todayStart.toISOString())
+        .lt('start_time', tomorrowStart.toISOString())
+        .order('start_time', { ascending: true });
+
+      if (eventsError) {
+        console.error('Error fetching global events:', eventsError);
+      } else {
+        // Map the events with participant count but don't filter out ended events
+        const allEvents = (eventsData || []).map((event: MeditationEvent) => ({
+          ...event,
+          participant_count: event.meditation_participants?.filter(p => p.active)?.length || 0,
+        }));
+        
+        console.log(`Found ${allEvents.length} global events for today`);
+        console.log('Event IDs:', allEvents.map(e => e.id));
+        
+        // Remove potential duplicates by ID
+        const uniqueEvents = allEvents.filter((event, index, self) =>
+          index === self.findIndex((e) => e.id === event.id)
+        );
+        
+        console.log(`After removing duplicates: ${uniqueEvents.length} events`);
+        
+        setGlobalEvents(uniqueEvents);
+      }
     } catch (error) {
       console.error('Error in fetchMeditationData:', error);
     } finally {
-      setLoading(false);
       setRefreshing(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchMeditationData();
-  }, [user, refresh, forceRefresh]);
+    
+    if (isUserProfile(user)) {
+      fetchRSVPs();
+      fetchAttendanceStatuses();
+    }
+    
+    // Prevent component from refreshing multiple times unnecessarily
+    return () => {
+      console.log('Cleaning up home screen data fetching');
+    };
+  }, [isUserProfile(user) ? user.id : null, refresh, forceRefresh]); // Safely access user.id
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     setForceRefresh(prev => prev + 1);
-    fetchMeditationData();
-  };
+    // fetchMeditationData will be called by the useEffect above
+  }, []);
 
   const renderQuickStartSection = () => (
     <View style={styles.section}>
@@ -321,16 +493,13 @@ if (eventsError) {
       <Text style={styles.sectionTitle}>Upcoming Global Meditations</Text>
       {globalEvents.length > 0 ? (
         globalEvents.map((event) => (
-          <MeditationCard
+          <EventCard
             key={event.id}
-            title={event.title}
-            subtitle={new Date(event.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            duration={event.duration}
-            tradition={event.tradition || 'secular'}
-            participants={event.participant_count}
-            isGlobal={true}
-            eventId={event.id}
-            startTime={event.start_time}
+            event={event}
+            attendanceStatus={getEventAttendanceStatus(event.id, attendanceStatuses)}
+            isRSVPed={isEventRSVPed(event.id, rsvpedEvents)}
+            onRSVP={handleRSVP}
+            onSetAttendance={handleSetAttendance}
           />
         ))
       ) : (
@@ -348,147 +517,6 @@ if (eventsError) {
     </View>
   );
 
-  const renderRecentMeditationsSection = () => (
-    <ScrollView>
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Your Recent Meditations</Text>
-        {isUserProfile(user) && (
-          <>
-            {recentEvents.length > 0 ? (
-              recentEvents.map((completion) => {
-                const event = completion.meditation_events;
-                const meditationType =
-                  completion.meditation_type ||
-                  (event ? (event.is_global ? 'global' : 'scheduled') : 'quick');
-                const isQuickMeditation = meditationType === 'quick';
-                const isHistoryEntry = meditationType === 'user_history';
-                const completedDate = new Date(completion.completed_at || Date.now());
-  
-                // Always treat duration as seconds from user_meditation_history
-                const durationMinutes = Math.floor(completion.duration / 60);
-                const remainingSeconds = completion.duration % 60;
-                const formattedDuration =
-                  remainingSeconds > 0
-                    ? `${durationMinutes}:${remainingSeconds.toString().padStart(2, '0')}`
-                    : `${durationMinutes} min`;
-  
-                let iconName: any = 'checkmark-circle';
-                let iconColor = COLORS.pastel2;
-                let backgroundColor = COLORS.secondary;
-  
-                if (isQuickMeditation) {
-                  iconName = 'flash';
-                  iconColor = COLORS.primary;
-                  backgroundColor = COLORS.pastel1;
-                } else if (isHistoryEntry) {
-                  iconName = 'book';
-                  iconColor = COLORS.primary;
-                  backgroundColor = COLORS.pastel3;
-                }
-  
-                return (
-                  <View key={completion.id} style={styles.completedMeditationCard}>
-                    <View style={styles.cardHeader}>
-                      <View style={[styles.traditionIcon, { backgroundColor }]}>
-                        <Ionicons name={iconName} size={20} color={iconColor} />
-                      </View>
-                      <View style={styles.cardTitleContainer}>
-                        <Text style={styles.cardTitle}>
-                          {isQuickMeditation
-                            ? `Quick ${formattedDuration} Meditation`
-                            : isHistoryEntry
-                            ? `${formattedDuration} Meditation`
-                            : event?.title || 'Meditation Session'}
-                        </Text>
-                        <Text style={styles.cardSubtitle}>
-                          {completedDate.toLocaleString([], {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.cardFooter}>
-                      <View style={styles.cardDetailItem}>
-                        <Ionicons name="time-outline" size={16} color={COLORS.gray} />
-                        <Text style={styles.cardDetailText}>{formattedDuration}</Text>
-                      </View>
-                      {(event?.tradition || completion.tradition) && (
-                        <View style={styles.cardDetailItem}>
-                          <Ionicons name="leaf-outline" size={16} color={COLORS.gray} />
-                          <Text style={styles.cardDetailText}>
-                            {FAITH_TRADITIONS.find(
-                              (t) => t.id === (event?.tradition || completion.tradition)
-                            )?.name || 'Secular'}
-                          </Text>
-                        </View>
-                      )}
-                      <View style={styles.cardDetailItem}>
-                        <Ionicons
-                          name={
-                            meditationType === 'quick'
-                              ? 'flash-outline'
-                              : meditationType === 'global'
-                              ? 'globe-outline'
-                              : meditationType === 'user_history'
-                              ? 'book-outline'
-                              : 'calendar-outline'
-                          }
-                          size={16}
-                          color={COLORS.gray}
-                        />
-                        <Text style={styles.cardDetailText}>
-                          {meditationType === 'quick'
-                            ? 'Quick'
-                            : meditationType === 'global'
-                            ? 'Global'
-                            : meditationType === 'user_history'
-                            ? 'History'
-                            : 'Scheduled'}
-                        </Text>
-                      </View>
-                      <View style={styles.cardDetailItem}>
-                        <View style={styles.completedBadge}>
-                          <Text style={styles.completedText}>Completed</Text>
-                          <Ionicons name="checkmark" size={14} color={COLORS.secondary} />
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                );
-              })
-            ) : (
-              <View style={styles.emptyStateContainer}>
-                <Ionicons name="time" size={40} color={COLORS.lightGray} />
-                <Text style={styles.emptyStateText}>You haven't meditated yet</Text>
-                <Text style={styles.emptyStateSubtext}>
-                  Start with a quick session above
-                </Text>
-              </View>
-            )}
-          </>
-        )}
-        {!isUserProfile(user) && (
-          <View style={styles.emptyStateContainer}>
-            <Ionicons name="time" size={40} color={COLORS.lightGray} />
-            <Text style={styles.emptyStateText}>Sign in to track your meditations</Text>
-            <Text style={styles.emptyStateSubtext}>
-              Join the community to save your progress
-            </Text>
-            <Link href="/auth/sign-in" asChild>
-              <Button style={styles.signInButton} size="small" onPress={() => {}}>
-                Sign In
-              </Button>
-            </Link>
-          </View>
-        )}
-      </View>
-    </ScrollView>
-  );
-  
   const renderWelcomeSection = () => (
     <View style={styles.header}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -506,6 +534,339 @@ if (eventsError) {
       </Text>
     </View>
   );
+
+  // Fetch RSVPs for the current user
+  const fetchRSVPs = async () => {
+    if (!user || !isUserProfile(user)) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('event_rsvps')
+        .select('event_id, notification_id')
+        .eq('user_id', user.id);
+      
+      if (error) {
+        console.log('RSVP table may not exist yet:', error.message);
+        return;
+      }
+      
+      if (data) {
+        setRsvpedEvents(data.map(rsvp => rsvp.event_id));
+      }
+    } catch (error) {
+      console.error('Error fetching RSVPs:', error);
+    }
+  };
+
+  // Fetch attendance statuses for the current user
+  const fetchAttendanceStatuses = async () => {
+    if (!user || !isUserProfile(user)) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('event_rsvps')
+        .select('event_id, attendance_status')
+        .eq('user_id', user.id)
+        .not('attendance_status', 'is', null);
+        
+      if (error) {
+        console.log('Error fetching attendance statuses:', error.message);
+        return;
+      }
+      
+      if (data) {
+        const statuses = data.reduce((acc, item) => {
+          if (item.attendance_status) {
+            acc[item.event_id] = item.attendance_status;
+          }
+          return acc;
+        }, {} as Record<string, string>);
+        
+        setAttendanceStatuses(statuses);
+      }
+    } catch (error) {
+      console.error('Error in fetchAttendanceStatuses:', error);
+    }
+  };
+
+  // Handle RSVP for an event
+  const handleRSVP = async (event: MeditationEvent) => {
+    if (!isUserProfile(user)) {
+      Alert.alert(
+        'Sign In Required',
+        'You need to sign in to set reminders for meditation events.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/auth/sign-in') }
+        ]
+      );
+      return;
+    }
+    
+    try {
+      // Extract the original event ID (removing the date-specific suffix)
+      let originalId = event.id;
+      if (event.id.includes('-')) {
+        const segments = event.id.split('-');
+        // If this looks like a UUID with date suffix, extract the complete UUID
+        if (segments.length > 5) {
+          originalId = segments.slice(0, 5).join('-');
+        }
+      }
+      
+      console.log(`Processing event with ID: ${event.id}`);
+      console.log(`Using event ID for RSVP: ${originalId}`);
+      
+      // Check if already RSVPed
+      const isAlreadyRSVPed = isEventRSVPed(event.id, rsvpedEvents);
+      
+      if (isAlreadyRSVPed) {
+        try {
+          // Find and cancel any existing notification
+          const { data: rsvpData, error: fetchError } = await supabase
+            .from('event_rsvps')
+            .select('notification_id')
+            .eq('event_id', originalId)
+            .eq('user_id', user.id)
+            .single();
+            
+          if (fetchError && fetchError.code !== 'PGRST116') {
+            console.error('Error fetching RSVP data:', fetchError);
+            Alert.alert('Error', 'Could not retrieve reminder information.');
+            return;
+          }
+            
+          // Cancel the notification if it exists
+          if (rsvpData?.notification_id) {
+            try {
+              await cancelNotification(rsvpData.notification_id);
+              console.log(`Cancelled notification ${rsvpData.notification_id}`);
+            } catch (notifError) {
+              console.error('Error canceling notification:', notifError);
+              // Continue anyway - we still want to remove the RSVP
+            }
+          }
+            
+          // Remove RSVP
+          const { error } = await supabase
+            .from('event_rsvps')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('event_id', originalId);
+            
+          if (error) {
+            console.error('Error removing RSVP:', error);
+            Alert.alert('Error', 'Failed to remove reminder. Please try again.');
+            return;
+          }
+            
+          // Update local state
+          setRsvpedEvents(prev => prev.filter(id => id !== originalId));
+          Alert.alert('Reminder Removed', 'You will no longer receive a reminder for this event.');
+        } catch (error) {
+          console.error('Error handling RSVP removal:', error);
+          Alert.alert('Error', 'An error occurred while removing your reminder.');
+        }
+      } else {
+        // Add RSVP
+        try {
+          // Schedule a notification
+          let notificationId = null;
+          try {
+            notificationId = await scheduleEventReminder(originalId, event.title, event.start_time);
+            console.log(`Scheduled notification with ID: ${notificationId}`);
+          } catch (notifError) {
+            console.error('Error scheduling notification:', notifError);
+            // Continue anyway - we still want to add the RSVP even if notification fails
+          }
+          
+          // Create the RSVP record with the notification ID
+          const rsvpData = {
+            user_id: user.id,
+            event_id: originalId,
+            reminder_sent: false,
+            created_at: new Date().toISOString(),
+            notification_id: notificationId
+          };
+          
+          const { error } = await supabase
+            .from('event_rsvps')
+            .upsert(rsvpData, { onConflict: 'user_id,event_id' });
+          
+          if (error) {
+            console.error('Error adding RSVP:', error);
+            
+            // Try to cancel the notification if it was created but RSVP failed
+            if (notificationId) {
+              try {
+                await cancelNotification(notificationId);
+              } catch (cancelError) {
+                console.error('Error canceling notification after RSVP failure:', cancelError);
+              }
+            }
+            
+            Alert.alert('Error', 'Failed to set reminder. Please try again.');
+            return;
+          }
+          
+          // Update local state
+          setRsvpedEvents(prev => [...prev, originalId]);
+          Alert.alert(
+            'Reminder Set',
+            'You will receive a notification before this meditation session begins.',
+            [
+              { text: 'OK' },
+              { 
+                text: 'Notification Settings', 
+                onPress: () => router.push('/settings/notifications') 
+              }
+            ]
+          );
+        } catch (error) {
+          console.error('Error in RSVP creation:', error);
+          Alert.alert('Error', 'Failed to set reminder. Please try again.');
+        }
+      }
+    } catch (error) {
+      console.error('Error in handleRSVP:', error);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+    }
+  };
+
+  // Handle setting attendance status
+  const handleSetAttendance = async (
+    event: MeditationEvent,
+    status: 'attending' | 'interested' | null
+  ) => {
+    if (!isUserProfile(user)) {
+      Alert.alert(
+        'Sign In Required',
+        'You need to sign in to mark your attendance for meditation events.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/auth/sign-in') }
+        ]
+      );
+      return;
+    }
+
+    try {
+      // Extract the original event ID (removing any instance-specific suffix)
+      let originalId = event.id;
+      if (event.id.includes('-')) {
+        const segments = event.id.split('-');
+        if (segments.length > 5) {
+          // Join the first 5 segments to form a complete UUID
+          originalId = segments.slice(0, 5).join('-');
+        }
+      }
+      
+      console.log(`Setting attendance status for event: ${originalId} to ${status || 'null'}`);
+      
+      // Check if an RSVP record already exists for this event and user
+      const { data: existingRSVP, error: fetchError } = await supabase
+        .from('event_rsvps')
+        .select('id, notification_id')
+        .eq('event_id', originalId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+        
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('Error checking for existing RSVP:', fetchError);
+        Alert.alert('Error', 'Could not update attendance status. Please try again.');
+        return;
+      }
+      
+      let notificationId = existingRSVP?.notification_id || null;
+      
+      // When setting status to 'attending', schedule a reminder if it doesn't exist
+      if (status === 'attending' && !notificationId) {
+        try {
+          // For recurring events, ensure we use the next occurrence time
+          const now = new Date();
+          const eventTime = new Date(event.start_time);
+          
+          // Only schedule notification if the event is in the future
+          if (eventTime > now) {
+            notificationId = await scheduleEventReminder(originalId, event.title, event.start_time);
+            console.log(`Scheduled attending notification with ID: ${notificationId}`);
+          }
+        } catch (notifError) {
+          console.error('Error scheduling notification:', notifError);
+          // Continue anyway - we still want to set attendance status even if notification fails
+        }
+      } 
+      // If removing attendance and a notification exists, cancel it
+      else if (status !== 'attending' && existingRSVP && existingRSVP.notification_id) {
+        try {
+          await cancelNotification(existingRSVP.notification_id);
+          console.log(`Cancelled notification ${existingRSVP.notification_id}`);
+          notificationId = null;
+        } catch (cancelError) {
+          console.error('Error canceling notification:', cancelError);
+          // Continue anyway - we still want to update attendance status
+        }
+      }
+      
+      // Update or create the RSVP record with the new attendance status
+      if (existingRSVP) {
+        const { error: updateError } = await supabase
+          .from('event_rsvps')
+          .update({ 
+            attendance_status: status, 
+            notification_id: notificationId 
+          })
+          .eq('id', existingRSVP.id);
+          
+        if (updateError) {
+          console.error('Error updating attendance status:', updateError);
+          Alert.alert('Error', 'Failed to update attendance status. Please try again.');
+          return;
+        }
+      } else {
+        const { error: insertError } = await supabase
+          .from('event_rsvps')
+          .insert({
+            user_id: user.id,
+            event_id: originalId,
+            attendance_status: status,
+            created_at: new Date().toISOString(),
+            notification_id: notificationId
+          });
+          
+        if (insertError) {
+          console.error('Error setting attendance status:', insertError);
+          Alert.alert('Error', 'Failed to set attendance status. Please try again.');
+          return;
+        }
+      }
+      
+      // Update local state
+      if (status) {
+        setAttendanceStatuses(prev => ({ ...prev, [originalId]: status }));
+      } else {
+        setAttendanceStatuses(prev => {
+          const newStatuses = { ...prev };
+          delete newStatuses[originalId];
+          return newStatuses;
+        });
+      }
+      
+      // Refresh event list to update participant counts
+      fetchMeditationData();
+      
+      Alert.alert('Status Updated', 
+        status === 'attending' 
+          ? 'You are now attending this event.' 
+          : status === 'interested' 
+            ? 'You are now interested in this event.' 
+            : 'Attendance status removed.');
+          
+    } catch (error) {
+      console.error('Error in handleSetAttendance:', error);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+    }
+  };
 
   if (loading && !refreshing) {
     return (
@@ -532,7 +893,6 @@ if (eventsError) {
       {renderWelcomeSection()}
       {renderQuickStartSection()}
       {renderGlobalMeditationsSection()}
-      {renderRecentMeditationsSection()}
       
       <View style={styles.quotesContainer}>
         <View style={styles.quoteCard}>
@@ -782,5 +1142,49 @@ const styles = StyleSheet.create({
   },
   disabledText: {
     color: COLORS.gray,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 'auto',
+  },
+  actionButton: {
+    padding: 8,
+    borderRadius: 15,
+    marginRight: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 36,
+    height: 36,
+  },
+  timeUntilContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 'auto',
+  },
+  timeUntilText: {
+    marginLeft: 4,
+  },
+  activeButton: {
+    backgroundColor: COLORS.secondary,
+  },
+  attendingButton: {
+    backgroundColor: COLORS.primary,
+  },
+  joinButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.pastel3,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 15,
+    marginLeft: 8,
+  },
+  joinButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.primary,
+    marginRight: 4,
   },
 });

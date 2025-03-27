@@ -289,9 +289,9 @@ export default function EventsScreen() {
     let originalId = eventId;
     if (eventId.includes('-')) {
       const segments = eventId.split('-');
-      // If this looks like a UUID with date suffix, take just the first part
+      // If this looks like a UUID with date suffix, extract the complete UUID (first 5 segments)
       if (segments.length > 5) {
-        originalId = segments[0];
+        originalId = segments.slice(0, 5).join('-'); // Join first 5 segments to form complete UUID
       }
     }
     
@@ -303,7 +303,7 @@ export default function EventsScreen() {
     event: MeditationEvent,
     status: 'attending' | 'interested' | null
   ) => {
-    if (!user) {
+    if (!isUserProfile(user)) {
       Alert.alert(
         'Sign In Required',
         'You need to sign in to mark your attendance for meditation events.',
@@ -314,19 +314,15 @@ export default function EventsScreen() {
       );
       return;
     }
-    
-    if (!isUserProfile(user)) {
-      Alert.alert('Error', 'User profile not found. Please try signing in again.');
-      return;
-    }
-    
+
     try {
-      // Extract the original event ID (removing any date-specific suffix)
+      // Extract the original event ID (removing any instance-specific suffix)
       let originalId = event.id;
       if (event.id.includes('-')) {
         const segments = event.id.split('-');
         if (segments.length > 5) {
-          originalId = segments[0];
+          // Join the first 5 segments to form a complete UUID
+          originalId = segments.slice(0, 5).join('-');
         }
       }
       
@@ -348,32 +344,46 @@ export default function EventsScreen() {
       
       let notificationId = existingRSVP?.notification_id || null;
       
-      // When setting status to 'attending', schedule a reminder 5 minutes before event start
-      if (status === 'attending') {
+      // When setting status to 'attending', schedule a reminder if it doesn't exist
+      if (status === 'attending' && !notificationId) {
         try {
-          notificationId = await scheduleEventReminder(originalId, event.title, event.start_time);
-          console.log(`Scheduled attending notification with ID: ${notificationId}`);
+          // For recurring events, ensure we use the next occurrence time
+          const now = new Date();
+          const eventTime = new Date(event.start_time);
+          const isRecurring = event.is_recurring;
+          
+          // Only schedule notification if the event is in the future
+          if (eventTime > now) {
+            notificationId = await scheduleEventReminder(originalId, event.title, event.start_time);
+            console.log(`Scheduled attending notification with ID: ${notificationId}`);
+          }
         } catch (notifError) {
-          console.error('Error scheduling attending notification:', notifError);
+          console.error('Error scheduling notification:', notifError);
+          // Continue anyway - we still want to set attendance status even if notification fails
         }
       } 
       // If removing attendance and a notification exists, cancel it
-      else if (existingRSVP && existingRSVP.notification_id) {
+      else if (status !== 'attending' && existingRSVP && existingRSVP.notification_id) {
         try {
           await cancelNotification(existingRSVP.notification_id);
           console.log(`Cancelled notification ${existingRSVP.notification_id}`);
           notificationId = null;
         } catch (cancelError) {
           console.error('Error canceling notification:', cancelError);
+          // Continue anyway - we still want to update attendance status
         }
       }
       
-      // Update or create the RSVP record with the new attendance status and notification ID
+      // Update or create the RSVP record with the new attendance status
       if (existingRSVP) {
         const { error: updateError } = await supabase
           .from('event_rsvps')
-          .update({ attendance_status: status, notification_id: notificationId })
+          .update({ 
+            attendance_status: status, 
+            notification_id: notificationId 
+          })
           .eq('id', existingRSVP.id);
+          
         if (updateError) {
           console.error('Error updating attendance status:', updateError);
           Alert.alert('Error', 'Failed to update attendance status. Please try again.');
@@ -389,6 +399,7 @@ export default function EventsScreen() {
             created_at: new Date().toISOString(),
             notification_id: notificationId
           });
+          
         if (insertError) {
           console.error('Error setting attendance status:', insertError);
           Alert.alert('Error', 'Failed to set attendance status. Please try again.');
@@ -396,25 +407,27 @@ export default function EventsScreen() {
         }
       }
       
-      // Update local state accordingly
+      // Update local state
       if (status) {
-        setAttendanceStatuses((prev: any) => ({ ...prev, [originalId]: status }));
+        setAttendanceStatuses(prev => ({ ...prev, [originalId]: status }));
       } else {
-        setAttendanceStatuses((prev: any) => {
+        setAttendanceStatuses(prev => {
           const newStatuses = { ...prev };
           delete newStatuses[originalId];
           return newStatuses;
         });
       }
       
-      const message =
-        status === 'attending'
-          ? 'You are now attending this event. A reminder will be sent 5 minutes before the event starts.'
-          : status === 'interested'
-          ? 'You are now interested in this event.'
-          : 'Attendance status removed.';
+      // Refresh event list to update participant counts
+      fetchEvents();
       
-      Alert.alert('Status Updated', message);
+      Alert.alert('Status Updated', 
+        status === 'attending' 
+          ? 'You are now attending this event.' 
+          : status === 'interested' 
+            ? 'You are now interested in this event.' 
+            : 'Attendance status removed.');
+          
     } catch (error) {
       console.error('Error in handleSetAttendance:', error);
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');
@@ -669,7 +682,7 @@ export default function EventsScreen() {
 
   // Handle RSVP for an event
   const handleRSVP = async (event: MeditationEvent) => {
-    if (!user) {
+    if (!isUserProfile(user)) {
       Alert.alert(
         'Sign In Required',
         'You need to sign in to set reminders for meditation events.',
@@ -681,26 +694,18 @@ export default function EventsScreen() {
       return;
     }
     
-    if (!isUserProfile(user)) {
-      Alert.alert('Error', 'User profile not found. Please try signing in again.');
-      return;
-    }
-    
     try {
-      // Log the original event ID for debugging
-      console.log(`Processing event with ID: ${event.id}`);
-      
       // Extract the original event ID (removing the date-specific suffix)
-      // We'll only use the first part as the event ID, even for non-recurring events
       let originalId = event.id;
       if (event.id.includes('-')) {
         const segments = event.id.split('-');
-        // If this looks like a UUID with date suffix, take just the first part
+        // If this looks like a UUID with date suffix, extract the complete UUID
         if (segments.length > 5) {
-          originalId = segments[0];
+          originalId = segments.slice(0, 5).join('-');
         }
       }
       
+      console.log(`Processing event with ID: ${event.id}`);
       console.log(`Using event ID for RSVP: ${originalId}`);
       
       // Check if already RSVPed
@@ -884,7 +889,14 @@ export default function EventsScreen() {
 
   const isEventRSVPed = (eventId: string): boolean => {
     // Extract the original event ID (removing the date-specific suffix)
-    const originalId = eventId.split('-')[0];
+    let originalId = eventId;
+    if (eventId.includes('-')) {
+      const segments = eventId.split('-');
+      // If this looks like a UUID with date suffix, extract the complete UUID
+      if (segments.length > 5) {
+        originalId = segments.slice(0, 5).join('-');
+      }
+    }
     return rsvpedEvents.includes(originalId);
   };
 
